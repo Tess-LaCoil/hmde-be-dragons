@@ -278,6 +278,7 @@ canham_true_data <- tibble(
 ) %>%
   filter(time %in% seq(from = 0, to = 49, by = 5))
 
+#Get forward projection with a larger step size and see if there is a meaningful difference
 test_times <- seq(0, 49, by = 0.001)
 canham_test_y <- ode(yini, test_times, Canham_DE, pars_combo, method = "rk4")[,2]
 canham_test_data <- tibble(
@@ -288,8 +289,9 @@ canham_test_data <- tibble(
 test <- canham_true_data$y - canham_test_data$y
 max(test)
 
+#Add error, rounding
 canham_obs_data <- tibble(
-  y_obs = canham_true_data$y + rnorm(nrow(canham_true_data), 0, 0.1),
+  y_obs = round((canham_true_data$y + rnorm(nrow(canham_true_data), 0, 0.1)), digits = 1),
   time = canham_true_data$time,
   obs_index = 1:nrow(canham_true_data)
 )
@@ -1233,6 +1235,7 @@ print(dist(dist_table))
 pars_combo <- c(g_max = 0.8,
                 y_max = 8,
                 k = 1)
+par_names <- c("g_max", "y_max", "k")
 
 canham_hist_0 <- ggplot(data = canham_par_est_tibble, aes(x=g_max)) +
   geom_histogram(fill = "lightblue",
@@ -1251,33 +1254,54 @@ canham_hist_3 <- ggplot(data = canham_par_est_tibble, aes(x=k)) +
   labs(x = "k estimates") +
   theme_classic()
 
-#Get some initialising estimates
-possible_error <- canham_par_est_tibble %>%
-  filter(g_max > mean(canham_par_est_tibble$g_max))
+#Scatter plots
+canham_scatter_list <- list()
+for(i in 2:3){
+  for(j in 3:4){
+    if(i < j){
+      plot_data <- tibble(
+        x = canham_par_est_tibble[[par_names[i-1]]],
+        y = canham_par_est_tibble[[par_names[j-1]]]
+      )
+      canham_scatter_temp_plot <- ggplot(plot_data,
+                                           aes(x = x,
+                                               y = y)) +
+        geom_point(colour = "darkorchid", alpha = 0.1) +
+        labs(x = par_names[i-1], y = par_names[j-1]) +
+        theme_classic()
+      
+      canham_scatter_temp <- list(canham_scatter_temp_plot)
+      canham_scatter_list <- c(canham_scatter_list, 
+                             canham_scatter_temp)
+    }
+  }
+}
 
-#To speed up the iterative algorithm we provide some initial conditions
-mu <- list( #Means from true parameters and extreme estimates
-  true = pars_combo,
-  error = c(mean(possible_error$g_max), 
-            mean(possible_error$y_max),
-            mean(possible_error$k))
+#Mean posterior estimates
+est_pars <- list(
+  pars = list(
+    g_max = mean(canham_par_est_tibble$g_max),
+    y_max = mean(canham_par_est_tibble$y_max),
+    k = mean(canham_par_est_tibble$k)
+  )
 )
 
-#Fit multivariate normal finite mixture model to the estimates
-mix_model_canham <- mvnormalmixEM(x = canham_par_est_tibble[,3:5], mu = mu)
-summary(mix_model_canham)
-print(mix_model_canham$lambda)
-
-dist_table <- tibble( #Data to calculate distance
-  g_max = c(mix_model_canham$mu[[2]][1], 
-            mix_model_canham$mu[[1]][1]),
-  y_max = c(mix_model_canham$mu[[2]][2], 
-            mix_model_canham$mu[[1]][2]),
-  k = c(mix_model_canham$mu[[2]][3],
-        mix_model_canham$mu[[1]][3])
-)
-print(dist(dist_table))
-
+#Plot of growth functions
+ggplot() +
+  xlim(y_0, y_final) +
+  labs(x = "Y(t)", y = "f", title = "Canham growth") +
+  geom_function(fun=hmde_model_des("canham_single_ind"),
+                args=list(pars = list(pars_combo[1],
+                                      pars_combo[2],
+                                      pars_combo[3])),
+                colour="black", linewidth=0.8,
+                linetype = "dashed",
+                xlim=c(y_0, y_final)) +
+  geom_function(fun=hmde_model_des("canham_single_ind"),
+                args=est_pars,
+                colour="darkorchid", linewidth=1,
+                xlim=c(y_0, y_final)) +
+  theme_classic()
 ```
 
 ## Plots for paper
@@ -1365,9 +1389,11 @@ plot_grid(
   labels = lab_vec_4
 )
 
+#Canham
 plot_grid(
   canham_hist_0,
   canham_hist_1,
+  canham_hist_3,
   ncol = 1,
   labels = lab_vec_4[1:3]
 )
