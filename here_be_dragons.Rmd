@@ -278,13 +278,23 @@ canham_true_data <- tibble(
 ) %>%
   filter(time %in% seq(from = 0, to = 49, by = 5))
 
+test_times <- seq(0, 49, by = 0.001)
+canham_test_y <- ode(yini, test_times, Canham_DE, pars_combo, method = "rk4")[,2]
+canham_test_data <- tibble(
+  y = canham_test_y,
+  time = test_times
+) %>%
+  filter(time %in% seq(from = 0, to = 49, by = 5))
+test <- canham_true_data$y - canham_test_data$y
+max(test)
+
 canham_obs_data <- tibble(
   y_obs = canham_true_data$y + rnorm(nrow(canham_true_data), 0, 0.1),
   time = canham_true_data$time,
   obs_index = 1:nrow(canham_true_data)
 )
 
-#Plot Canham function
+#Plot Canham function ad data
 y_0 <- yini[1] #Starting size
 y_final <- canham_obs_data$y_obs[nrow(canham_obs_data)]
 
@@ -308,6 +318,8 @@ sizes_over_time_canham <- ggplot(canham_obs_data, aes(x = time, y = y_obs)) +
   theme_classic()
 sizes_over_time_canham
 
+
+# Get posterior estimates
 runs <- 1000
 canham_par_est_tibble <- tibble(run = c(),
                                 g_max = c(),
@@ -367,6 +379,10 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
   
   analysis_data <- par_est_tibble %>%
     filter(step_size == step_size_selected)
+  
+#  temp <- fit_mix_model(par_est_data = analysis_data, 
+#                par_names = c("beta_0", "beta_1"), 
+#                true_pars = c(beta_0, beta_1))
   
   #Get some extreme estimates
   possible_error <- analysis_data %>%
@@ -512,7 +528,7 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
     geom_density_2d(data = norm_data, colour = "black") +
     labs(x = "beta_0 est.",
            y = "beta_1 est.",
-           title = "Second cluster") +
+           title = paste0("Second cluster: step size ", step_size_select)) +
     annotate("text", x = xpos, y = ypos, 
              label = paste0("Probability: \n",
                             step_size_mix_models_par_ests$error_prob[i])) +
@@ -539,7 +555,7 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
     geom_density_2d(data = norm_data, colour = "black") +
     labs(x = "beta_0 est.",
            y = "beta_1 est.",
-           title = "First cluster") +
+           title = paste0("First cluster: step size ", step_size_select)) +
     annotate("text", x = xpos, y = ypos, 
              label = paste0("Probability: \n",
                             (1-step_size_mix_models_par_ests$error_prob[i]))) +
@@ -862,7 +878,7 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
               linetype = legend_spec$linetypes[i], 
               linewidth = 1) +
     geom_hline(yintercept = 0, linetype = "solid", colour = "black") +
-    labs(title = "Numerical error for bad parameters",
+    labs(title = paste0("Numerical error: step size ", plot_data$model[1]),
          x = "Time",
          y = "Error (numerical - analytic)") +
     theme_classic()
@@ -898,7 +914,7 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
   scale_shape_manual(values = legend_spec$shapes[i]) +
   scale_colour_manual(values = legend_spec$colours[i]) +
   labs(x = "Time", y = "Y(t)", 
-       title = paste0("Estimated sizes over time"),
+       title = paste0("Estimated Y(t): step size ", plot_data_reduced$model[1]),
        colour = NULL,
        shape = NULL,
        linetype = NULL) +
@@ -1279,6 +1295,7 @@ plot_grid(beta_0_plot_list[[1]],
 
 #Labels
 lab_vec_4 <- c("(a)", "(b)", "(c)", "(d)")
+lab_vec_6 <- c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)")
 
 #Numerics plots
 plot_grid(
@@ -1313,6 +1330,32 @@ for(i in 1:3){
   )
 }
 
+plot_grid(
+  size_analytic_plots[[1]],
+    stability_plots[[1]],
+  size_analytic_plots[[2]],
+    stability_plots[[2]],
+  size_analytic_plots[[3]],
+    stability_plots[[3]],
+  nrow = 3,
+    byrow = TRUE,
+    labels=lab_vec_6
+)
+
+plot_grid(
+  scatterplot_good_only[[1]],
+    scatterplot_errors_only[[1]],
+  scatterplot_good_only[[2]],
+    scatterplot_errors_only[[2]],
+  scatterplot_good_only[[3]],
+    scatterplot_errors_only[[3]],
+  nrow = 3,
+    byrow = TRUE,
+    labels=lab_vec_6
+)
+
+
+#RK45 and analytic solution
 plot_grid(
   rk45_hist_0,
   rk45_hist_1,

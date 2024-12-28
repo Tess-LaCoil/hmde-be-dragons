@@ -40,8 +40,10 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
 
 #Fit finite mixture model with 2 clusters
 fit_mix_model <- function(par_est_data, par_names, true_pars){
-  possible_error <- par_est_data %>%
-    filter(par_names[1] > mean(analysis_data[[par_names[1]]]))
+  possible_error <- par_est_data[ #Get rows with large first parmeters
+    which(par_est_data[[par_names[1]]] > mean(par_est_data[[par_names[1]]]))
+    ,
+  ]
 
   #To speed up the iterative algorithm we provide some initial conditions
   error_means <- c()
@@ -54,7 +56,7 @@ fit_mix_model <- function(par_est_data, par_names, true_pars){
   )
 
   mix_model_data <- par_est_data %>%
-    select(par_names)
+    dplyr::select(any_of(par_names))
 
   #Fit multivariate normal finite mixture model to the estimates
   mix_model <- mvnormalmixEM(x = mix_model_data, mu = mu)
@@ -64,7 +66,7 @@ fit_mix_model <- function(par_est_data, par_names, true_pars){
   for(i in 1:2){
     par_vec_temp <- c()
     for(j in 1:length(par_names)){
-      par_vec_temp[j] <- mix_model[[i]]$mu[[i]][j]
+      par_vec_temp[j] <- mix_model$mu[[i]][j]
     }
     post_summary_vec <- c(post_summary_vec, par_vec_temp)
   }
