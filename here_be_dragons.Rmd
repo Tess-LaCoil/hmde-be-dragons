@@ -25,7 +25,7 @@ options(rmarkdown.html_vignette.check_title = FALSE)
 
 ## Load dependencies
 ```{r}
-#remotes::install_github("traitecoevo/hmde@29accb55b69bcc207e5299a84f931fe329c0d265", force = TRUE)
+#remotes::install_github("traitecoevo/hmde@bf1acfc0ec2e2c43d421d017fbeb28c44ad63940", force = TRUE)
 
 library(hmde)
 library(dplyr)
@@ -212,6 +212,7 @@ for(i in 1:runs){
 ```
 
 ### Independent error
+To show that the bias in the better estimate mode is due to the observations we do another set of runs with the analytic solution and independent error.
 ```{r}
 runs <- 10000
 indep_err_par_est_tibble <- tibble(run = c(),
@@ -229,12 +230,12 @@ for(i in 1:runs){
   
   temp <- fit_affine_model(run_no = i, 
                      step_size = 1, 
-                     obs_data_frame,
+                     temp_obs,
                      int_method = 3)
   
   temp$step_size[1] <- "Analytic"
   
-  analytic_par_est_tibble <- rbind(analytic_par_est_tibble, temp)
+  indep_err_par_est_tibble <- rbind(indep_err_par_est_tibble, temp)
 } 
 ```
 
@@ -286,6 +287,7 @@ To show that bimodality is not a quirk of our chosen $\beta$s we'll do a short r
 ```{r}
 beta_0_diff <- 8
 beta_1_diff <- 1.2
+time <- 0:9
 
 true_pars_diff <- list(
   beta_0 = beta_0_diff,
@@ -304,7 +306,7 @@ obs_diff_data_frame <- tibble(
 )
 
 runs <- 10000
-step_size = 0.5
+step_size = 0.25
 diff_par_est_tibble <- tibble(run = c(),
                          step_size = c(),
                          beta_0 = c(),
@@ -1321,11 +1323,106 @@ dist_table <- tibble( #Data to calculate distance
 print(dist(dist_table))
 ```
 
+### Independent errors
+We check that the independent error fits with the analytic solution produced a (minimally biased) unbiased estimate of the parameters. We get more variance in the estimates, but they are centred at the correct values.
+```{r}
+pars_combo <- c(beta_0, beta_1)
+
+indep_error_hist_0 <- ggplot(data = indep_err_par_est_tibble, 
+                             aes(x=beta_0)) +
+  geom_histogram(fill = "lightblue",
+                 colour = "black") +
+  labs(x = "beta_0 estimates",
+       title = "Parameter histograms from independent errors") +
+  theme_classic()
+indep_error_hist_1 <- ggplot(data = indep_err_par_est_tibble, 
+                             aes(x=beta_1)) +
+  geom_histogram(fill = "lightgreen",
+                 colour = "black") +
+  labs(x = "beta_1 estimates") +
+  theme_classic()
+
+indep_error_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  par_true = pars_combo,
+  par_mean = c(
+    mean(indep_err_par_est_tibble$beta_0),
+    mean(indep_err_par_est_tibble$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(indep_err_par_est_tibble$beta_0, probs = 0.025)),
+    as.numeric(quantile(indep_err_par_est_tibble$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(indep_err_par_est_tibble$beta_0, probs = 0.975)),
+    as.numeric(quantile(indep_err_par_est_tibble$beta_1, probs = 0.975))
+  )
+)
+```
+
+### Alternate parameters
+```{r}
+diff_par_hist_0 <- ggplot(data = diff_par_est_tibble, 
+                             aes(x=beta_0)) +
+  geom_histogram(fill = "lightblue",
+                 colour = "black") +
+  labs(x = "beta_0 estimates",
+       title = "Parameter histograms from alternate parameters") +
+  theme_classic()
+diff_par_hist_1 <- ggplot(data = diff_par_est_tibble, 
+                             aes(x=beta_1)) +
+  geom_histogram(fill = "lightgreen",
+                 colour = "black") +
+  labs(x = "beta_1 estimates") +
+  theme_classic()
+
+ggplot(data = diff_par_est_tibble, 
+                             aes(x=beta_0, y=beta_1)) +
+  geom_point(colour = "lightgreen") +
+  labs(x = "beta_0 estimates",
+       y = "beta_1 estimates") +
+  theme_classic()
+
+#Get some extreme estimates
+possible_error <- diff_par_est_tibble %>%
+  filter(beta_0 > mean(diff_par_est_tibble$beta_0))
+
+#To speed up the iterative algorithm we provide some initial conditions
+mu <- list( #Means from true parameters and extreme estimates
+  true = c(beta_0, beta_1),
+  error = c(mean(possible_error$beta_0), 
+            mean(possible_error$beta_1))
+)
+
+diff_par_mix_models <- mvnormalmixEM(x = diff_par_est_tibble[,c(3,4)], mu = mu)
+
+summary(diff_par_mix_models)
+
+plot(diff_par_mix_models,
+     whichplots = 2,
+     xlab2 = "Beta 0",
+     ylab2 = "Beta 1")
+
+dist_table <- tibble( #Data to calculate distance
+    b_0 = c(diff_par_mix_models$mu[[2]][1], 
+            diff_par_mix_models$mu[[1]][1]),
+    b_1 = c(diff_par_mix_models$mu[[2]][2], 
+            diff_par_mix_models$mu[[1]][2])
+  )
+dist(dist_table)
+
+diff_par_mix_models$mu[[2]][1]/diff_par_mix_models$mu[[2]][2]
+diff_par_mix_models$mu[[1]][1]/diff_par_mix_models$mu[[1]][2]
+
+```
+
 ### Canham testing
+Lucky for us, there is no evidence of secondary posterior clusters in the Canham estimates.
 ```{r}
 pars_combo <- c(g_max = 0.8,
                 y_max = 8,
                 k = 1)
+y_0 <- 1
 par_names <- c("g_max", "y_max", "k")
 
 canham_hist_1 <- ggplot(data = canham_par_est_tibble, aes(x=g_max)) +
@@ -1345,26 +1442,27 @@ canham_hist_3 <- ggplot(data = canham_par_est_tibble, aes(x=k)) +
   theme_classic()
 
 #Scatter plots
+pairs_index <- list(
+  c(1,2),
+  c(2,3),
+  c(3,1)
+)
 canham_scatter_list <- list()
-for(i in 2:3){
-  for(j in 3:4){
-    if(i < j){
-      plot_data <- tibble(
-        x = canham_par_est_tibble[[par_names[i-1]]],
-        y = canham_par_est_tibble[[par_names[j-1]]]
-      )
-      canham_scatter_temp_plot <- ggplot(plot_data,
-                                           aes(x = x,
-                                               y = y)) +
-        geom_point(colour = "darkorchid", alpha = 0.1) +
-        labs(x = par_names[i-1], y = par_names[j-1]) +
-        theme_classic()
-      
-      canham_scatter_temp <- list(canham_scatter_temp_plot)
-      canham_scatter_list <- c(canham_scatter_list, 
-                             canham_scatter_temp)
-    }
-  }
+for(i in pairs_index){
+  plot_data <- tibble(
+      x = canham_par_est_tibble[[par_names[i[1]]]],
+      y = canham_par_est_tibble[[par_names[i[2]]]]
+    )
+  canham_scatter_temp_plot <- ggplot(plot_data,
+                                       aes(x = x,
+                                           y = y)) +
+    geom_point(colour = "darkorchid", alpha = 0.1) +
+    labs(x = par_names[i[1]], y = par_names[i[2]]) +
+    theme_classic()
+  
+  canham_scatter_temp <- list(canham_scatter_temp_plot)
+  canham_scatter_list <- c(canham_scatter_list, 
+                         canham_scatter_temp)
 }
 
 #Mean posterior estimates
@@ -1403,25 +1501,27 @@ line_data <- tibble(
   source = c("True values", "True values",
              "Estimates", "Estimates")
 )
+ymin <- canham_true_data$y[1]
+yfin <- canham_true_data$y[nrow(canham_true_data)]
 canham_function_plot <- ggplot(line_data, aes(x = x, y = y, group = source)) +
   geom_line(aes(linetype = source, colour = source), linewidth = 0.8) +
   scale_linetype_manual(values = c("solid", "dashed")) +
   scale_colour_manual(values = c("darkorchid", "black")) +
-  xlim(y_0, y_final) +
+  xlim(ymin, yfin) +
   ylim(0, 0.82) +
   labs(x = "Y(t)", y = "f", title = "Canham growth functions",
        colour = "Parameters", linetype = "Parameters") +
   geom_function(fun=hmde_model_des("canham_single_ind"),
                 args=est_pars,
                 colour="darkorchid", linewidth=1,
-                xlim=c(y_0, y_final)) +
+                xlim=c(ymin, yfin)) +
   geom_function(fun=hmde_model_des("canham_single_ind"),
                 args=list(pars = list(pars_combo[1],
                                       pars_combo[2],
                                       pars_combo[3])),
                 colour="black", linewidth=0.8,
                 linetype = "dashed",
-                xlim=c(y_0, y_final)) +
+                xlim=c(ymin, yfin)) +
   theme_classic() +
   theme(legend.position = "inside",
         legend.position.inside = c(0.5, 0.3))
@@ -1445,6 +1545,7 @@ plot_grid(beta_0_plot_list[[1]],
 lab_vec_4 <- c("(a)", "(b)", "(c)", "(d)")
 lab_vec_5 <- c("(a)", "(b)", "(c)", "(d)", "(e)")
 lab_vec_6 <- c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)")
+lab_vec_8 <- c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)")
 
 #Numerics plots
 plot_grid(
@@ -1535,6 +1636,17 @@ hist_plot <- plot_grid(
   nrow = 1,
   labels = lab_vec_5[3:5]
 )
+scatter_hist <- plot_grid(
+  canham_hist_1,
+  canham_hist_2,
+  canham_hist_3,
+  canham_scatter_list[[1]],
+  canham_scatter_list[[2]],
+  canham_scatter_list[[3]],
+  nrow = 2,
+  labels = lab_vec_8[3:8],
+  align = "v"
+)
 
 plot_grid(upper_plot,
           scatter_plot,
@@ -1542,6 +1654,10 @@ plot_grid(upper_plot,
 plot_grid(upper_plot,
           hist_plot,
           nrow = 2)
+plot_grid(upper_plot, #Dims: 750,834 
+          scatter_hist,
+          nrow = 2,
+          rel_heights = c(0.4, 0.6))
 
 ```
 
