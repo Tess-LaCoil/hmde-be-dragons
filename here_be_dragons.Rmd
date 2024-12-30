@@ -211,6 +211,33 @@ for(i in 1:runs){
 } 
 ```
 
+### Independent error
+```{r}
+runs <- 10000
+indep_err_par_est_tibble <- tibble(run = c(),
+                         step_size = c(),
+                         beta_0 = c(),
+                         beta_1 = c())
+
+for(i in 1:runs){
+  temp_obs <- obs_data_frame %>%
+  mutate(
+      y_obs = round((y_true + 
+                       rnorm(length(y_true), 0, 0.1)), 
+                    digits = 1)
+    )
+  
+  temp <- fit_affine_model(run_no = i, 
+                     step_size = 1, 
+                     obs_data_frame,
+                     int_method = 3)
+  
+  temp$step_size[1] <- "Analytic"
+  
+  analytic_par_est_tibble <- rbind(analytic_par_est_tibble, temp)
+} 
+```
+
 ### Testing different priors
 As the default priors for the $\beta$ parameters are closer to the true parameter combination than any of the erroneous clusters we did follow-up testing to check if, and how much, this might bias the probability of a chain falling into the second mode in the posterior distribution. The Stan code for the affine model is set up to have a default pair of prior means at $\log(1) = 0$, but user-defined values can be passed as part of the data structure. We do this for the 0.5 step size only.
 
@@ -267,7 +294,6 @@ true_pars_diff <- list(
 )
 
 y_true_diff <- analytic_solution(time, true_pars_diff)
-
 y_obs_diff <- round(y_true_diff + rnorm(length(y_true_diff), 0, 0.1), digits = 1)
 
 #Observed data frame
@@ -378,7 +404,7 @@ canham_obs_true <- ggplot(line_plot_data, aes(x = Time, y = Y, group = source)) 
 canham_obs_true
 
 # Get posterior estimates
-runs <- 1000
+runs <- 10000
 canham_par_est_tibble <- tibble(run = c(),
                                 g_max = c(),
                                 y_max = c(),
@@ -386,6 +412,15 @@ canham_par_est_tibble <- tibble(run = c(),
 
 for(i in 1:runs){
   print(paste0("Run: ", i))
+  
+  #Independent error
+  canham_obs_data_temp <- canham_obs_data %>%
+    mutate(
+      y_obs = round((canham_true_data$y + 
+                       rnorm(nrow(canham_true_data), 0, 0.1)), 
+                    digits = 1)
+    )
+  
   #Run the model
   suppressWarnings(
     fit <- hmde_model("canham_single_ind") |>
