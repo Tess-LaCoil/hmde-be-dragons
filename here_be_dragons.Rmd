@@ -254,6 +254,47 @@ for(j in 1:length(beta_prior_testing)){
 }
 ```
 
+### Alternate parameter values
+To show that bimodality is not a quirk of our chosen $\beta$s we'll do a short run of chains for different parameter values.
+```{r}
+beta_0_diff <- 8
+beta_1_diff <- 1.2
+
+true_pars_diff <- list(
+  beta_0 = beta_0_diff,
+  beta_1 = beta_1_diff,
+  true_y_0 = true_y_0
+)
+
+y_true_diff <- analytic_solution(time, true_pars_diff)
+
+y_obs_diff <- round(y_true_diff + rnorm(length(y_true_diff), 0, 0.1), digits = 1)
+
+#Observed data frame
+obs_diff_data_frame <- tibble(
+  time = time,
+  y_obs = y_obs_diff,
+  obs_index = 1:length(y_obs_diff)
+)
+
+runs <- 10000
+step_size = 0.5
+diff_par_est_tibble <- tibble(run = c(),
+                         step_size = c(),
+                         beta_0 = c(),
+                         beta_1 = c())
+
+for(i in 1:runs){
+  print(paste0("Fit ", i))
+  temp <- fit_affine_model(run_no = i, 
+                   step_size = step_size, 
+                   obs_diff_data_frame,
+                   int_method = 1)
+  
+  diff_par_est_tibble <- rbind(diff_par_est_tibble, temp)
+} 
+```
+
 ### Checking Canham model for multi-modality in the posterior
 For reassurance we check whether the Canham model is also succeptable to posterior multimodality 
 ```{r}
@@ -299,6 +340,13 @@ canham_obs_data <- tibble(
 #Plot Canham function ad data
 y_0 <- yini[1] #Starting size
 y_final <- canham_obs_data$y_obs[nrow(canham_obs_data)]
+line_plot_data <- tibble(
+  Time = c(canham_obs_data$time, test_times),
+  Y = c(canham_obs_data$y_obs, canham_test_y),
+  source = c(rep("Simulated obs.", times = nrow(canham_obs_data)),
+             rep("Precise numerics", times = length(canham_test_y)))
+) %>%
+  filter(Time <= 45)
 
 #Plot of growth function
 ggplot() +
@@ -313,13 +361,21 @@ ggplot() +
   theme_classic()
 
 #Plot Canham simulated data
-sizes_over_time_canham <- ggplot(canham_obs_data, aes(x = time, y = y_obs)) +
-  geom_point(colour = "darkorchid", size = 3) +
-  geom_line(colour = "darkorchid", linewidth = 1) +
-  labs(x = "Time", y = "Y") +
-  theme_classic()
-sizes_over_time_canham
-
+canham_obs_true <- ggplot(line_plot_data, aes(x = Time, y = Y, group = source)) +
+  geom_line(aes(colour = source, linetype = source), linewidth = 1) +
+  geom_point(aes(colour = source, shape = source), size = 3, stroke = 1) +
+  scale_colour_manual(values = c("black", "darkorchid")) +
+  scale_shape_manual(values = c(NA, 25)) +
+  scale_linetype_manual(values = c("solid", NA)) +
+  labs(x = "Time", y = "Y(t)",
+       title = "True and observed", 
+       shape = "",
+       colour = "",
+       linetype = "") +
+  theme_classic() +
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.3,0.8))
+canham_obs_true
 
 # Get posterior estimates
 runs <- 1000
@@ -1237,13 +1293,12 @@ pars_combo <- c(g_max = 0.8,
                 k = 1)
 par_names <- c("g_max", "y_max", "k")
 
-canham_hist_0 <- ggplot(data = canham_par_est_tibble, aes(x=g_max)) +
+canham_hist_1 <- ggplot(data = canham_par_est_tibble, aes(x=g_max)) +
   geom_histogram(fill = "lightblue",
                  colour = "black") +
-  labs(x = "g_max estimates",
-       title = "Parameter histograms from Canham model") +
+  labs(x = "g_max estimates") +
   theme_classic()
-canham_hist_1 <- ggplot(data = canham_par_est_tibble, aes(x=y_max)) +
+canham_hist_2 <- ggplot(data = canham_par_est_tibble, aes(x=y_max)) +
   geom_histogram(fill = "lightgreen",
                  colour = "black") +
   labs(x = "y_max estimates") +
@@ -1286,10 +1341,45 @@ est_pars <- list(
   )
 )
 
+canham_post_par_table <- tibble(
+  par_name = c("$g_{max}$", "$y_{max}$", "$k$"),
+  par_true = pars_combo,
+  par_mean = c(
+    mean(canham_par_est_tibble$g_max),
+    mean(canham_par_est_tibble$y_max),
+    mean(canham_par_est_tibble$k)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(canham_par_est_tibble$g_max, probs = 0.025)),
+    as.numeric(quantile(canham_par_est_tibble$y_max, probs = 0.025)),
+    as.numeric(quantile(canham_par_est_tibble$k, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(canham_par_est_tibble$g_max, probs = 0.975)),
+    as.numeric(quantile(canham_par_est_tibble$y_max, probs = 0.975)),
+    as.numeric(quantile(canham_par_est_tibble$k, probs = 0.975))
+  )
+)
+
 #Plot of growth functions
-ggplot() +
+line_data <- tibble(
+  x = c(100, 101, 100, 101),
+  y = c(10, 11, 10, 11),
+  source = c("True values", "True values",
+             "Estimates", "Estimates")
+)
+canham_function_plot <- ggplot(line_data, aes(x = x, y = y, group = source)) +
+  geom_line(aes(linetype = source, colour = source), linewidth = 0.8) +
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  scale_colour_manual(values = c("darkorchid", "black")) +
   xlim(y_0, y_final) +
-  labs(x = "Y(t)", y = "f", title = "Canham growth") +
+  ylim(0, 0.82) +
+  labs(x = "Y(t)", y = "f", title = "Canham growth functions",
+       colour = "Parameters", linetype = "Parameters") +
+  geom_function(fun=hmde_model_des("canham_single_ind"),
+                args=est_pars,
+                colour="darkorchid", linewidth=1,
+                xlim=c(y_0, y_final)) +
   geom_function(fun=hmde_model_des("canham_single_ind"),
                 args=list(pars = list(pars_combo[1],
                                       pars_combo[2],
@@ -1297,11 +1387,10 @@ ggplot() +
                 colour="black", linewidth=0.8,
                 linetype = "dashed",
                 xlim=c(y_0, y_final)) +
-  geom_function(fun=hmde_model_des("canham_single_ind"),
-                args=est_pars,
-                colour="darkorchid", linewidth=1,
-                xlim=c(y_0, y_final)) +
-  theme_classic()
+  theme_classic() +
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.5, 0.3))
+canham_function_plot
 ```
 
 ## Plots for paper
@@ -1319,6 +1408,7 @@ plot_grid(beta_0_plot_list[[1]],
 
 #Labels
 lab_vec_4 <- c("(a)", "(b)", "(c)", "(d)")
+lab_vec_5 <- c("(a)", "(b)", "(c)", "(d)", "(e)")
 lab_vec_6 <- c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)")
 
 #Numerics plots
@@ -1390,13 +1480,33 @@ plot_grid(
 )
 
 #Canham
-plot_grid(
-  canham_hist_0,
-  canham_hist_1,
-  canham_hist_3,
-  ncol = 1,
-  labels = lab_vec_4[1:3]
+upper_plot <- plot_grid(
+  canham_obs_true,
+  canham_function_plot,
+  nrow = 1,
+  labels = lab_vec_5[1:2]
 )
+scatter_plot <- plot_grid(
+  canham_scatter_list[[1]],
+  canham_scatter_list[[2]],
+  canham_scatter_list[[3]],
+  nrow = 1,
+  labels = lab_vec_5[3:5]
+)
+hist_plot <- plot_grid(
+  canham_hist_1,
+  canham_hist_2,
+  canham_hist_3,
+  nrow = 1,
+  labels = lab_vec_5[3:5]
+)
+
+plot_grid(upper_plot,
+          scatter_plot,
+          nrow = 2)
+plot_grid(upper_plot,
+          hist_plot,
+          nrow = 2)
 
 ```
 
