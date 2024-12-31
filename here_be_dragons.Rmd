@@ -212,7 +212,7 @@ for(i in 1:runs){
 ```
 
 ### Independent error
-To show that the bias in the better estimate mode is due to the observations we do another set of runs with the analytic solution and independent error.
+To show that the bias in the better estimate mode is due to the observations we do another set of runs with the analytic solution, numerical solution, and independent error for each chain instead of using the same set of observations.
 ```{r}
 runs <- 10000
 indep_err_par_est_tibble <- tibble(run = c(),
