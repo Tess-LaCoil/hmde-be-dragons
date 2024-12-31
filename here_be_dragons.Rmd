@@ -220,7 +220,7 @@ indep_err_par_est_tibble <- tibble(run = c(),
                          beta_0 = c(),
                          beta_1 = c())
 
-for(i in 1:runs){
+for(i in 1:runs){ #Analytic solution
   temp_obs <- obs_data_frame %>%
   mutate(
       y_obs = round((y_true + 
@@ -236,6 +236,29 @@ for(i in 1:runs){
   temp$step_size[1] <- "Analytic"
   
   indep_err_par_est_tibble <- rbind(indep_err_par_est_tibble, temp)
+} 
+
+#Numerical method
+indep_err_numeric_par_est_tibble <- tibble(run = c(),
+                         step_size = c(),
+                         beta_0 = c(),
+                         beta_1 = c())
+for(i in 1:runs){ #RK4
+  temp_obs <- obs_data_frame %>%
+  mutate(
+      y_obs = round((y_true + 
+                       rnorm(length(y_true), 0, 0.1)), 
+                    digits = 1)
+    )
+  
+  temp <- fit_affine_model(run_no = i, 
+                     step_size = 0.5, 
+                     temp_obs,
+                     int_method = 1)
+  
+  temp$step_size[1] <- "0.5"
+  
+  indep_err_numeric_par_est_tibble <- rbind(indep_err_numeric_par_est_tibble, temp)
 } 
 ```
 
@@ -1321,6 +1344,24 @@ dist_table <- tibble( #Data to calculate distance
           mix_model_analytic$mu[[1]][2])
 )
 print(dist(dist_table))
+
+#Get mean and CIs
+same_error_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  par_true = pars_combo,
+  par_mean = c(
+    mean(analytic_par_est_tibble$beta_0),
+    mean(analytic_par_est_tibble$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.025)),
+    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.975)),
+    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.975))
+  )
+)
 ```
 
 ### Independent errors
