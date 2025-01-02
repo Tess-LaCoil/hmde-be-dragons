@@ -38,56 +38,33 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
 }
 
 
-#Fit finite mixture model with 2 clusters
-fit_mix_model <- function(par_est_data, par_names, true_pars){
-  possible_error <- par_est_data[ #Get rows with large first parmeters
-    which(par_est_data[[par_names[1]]] > mean(par_est_data[[par_names[1]]]))
-    ,
-  ]
+#Fit finite mixture model with 2 clusters for the affine model
+fit_mix_model <- function(par_est_data){
+  luster_1 <- par_est_data %>%
+    filter(beta_0 > mean(par_est_data$beta_0))
+  cluster_2 <- par_est_data %>%
+    filter(beta_0 <= mean(par_est_data$beta_0))
 
-  #To speed up the iterative algorithm we provide some initial conditions
-  error_means <- c()
-  for(i in 1:length(par_names)){
-    error_means[i] <- mean(possible_error[[par_names[i]]])
-  }
   mu <- list( #Means from true parameters and extreme estimates
-    true = true_pars,
-    error = error_means
+    cluster_1 = c(mean(cluster_1$beta_0),
+                  mean(cluster_1$beta_1)),
+    cluster_2 = c(mean(cluster_2$beta_0),
+                  mean(cluster_2$beta_1))
   )
 
-  mix_model_data <- par_est_data %>%
-    dplyr::select(any_of(par_names))
-
   #Fit multivariate normal finite mixture model to the estimates
-  mix_model <- mvnormalmixEM(x = mix_model_data, mu = mu)
+  mix_model <- mvnormalmixEM(x = par_est_data[,c(3,4)], mu = mu)
 
-  #Extract values
-  post_summary_vec <- c()
-  for(i in 1:2){
-    par_vec_temp <- c()
-    for(j in 1:length(par_names)){
-      par_vec_temp[j] <- mix_model$mu[[i]][j]
-    }
-    post_summary_vec <- c(post_summary_vec, par_vec_temp)
-  }
-
-  #Built data frame to distance between clusters
-  dist_table <- tibble()
-  for(i in 1:length(par_names)){
-    dist_table[[par_names[i]]] <- c(mix_model$mu[[1]][i],
-                                    mix_model$mu[[2]][i])
-  }
-
-  #Build summary list
-  post_summary_list <- list(
-    post_summary_vec = post_summary_vec,
-    error_prob = step_size_mix_models[[i]]$lambda[2],
-    dist = dist(dist_table)
+  dist_table <- tibble( #Data to calculate distance
+    b_0 = c(mix_model$mu[[2]][1],
+            mix_model$mu[[1]][1]),
+    b_1 = c(mix_model$mu[[2]][2],
+            mix_model$mu[[1]][2])
   )
 
   return(list(
       mix_model = mix_model,
-      post_summary_list = post_summary_list
+      dist = dist(dist_table)
     )
   )
 }

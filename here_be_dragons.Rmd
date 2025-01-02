@@ -1365,6 +1365,24 @@ indep_error_hist_1 <- ggplot(data = indep_err_par_est_tibble,
   labs(x = "beta_1 estimates") +
   theme_classic()
 
+#Split into clusters
+cluster_1 <- indep_err_par_est_tibble %>%
+  filter(beta_0 > mean(indep_err_par_est_tibble$beta_0))
+cluster_2 <- indep_err_par_est_tibble %>%
+  filter(beta_0 <= mean(indep_err_par_est_tibble$beta_0))
+
+mu <- list( #Means from true parameters and extreme estimates
+  cluster_1 = c(mean(cluster_1$beta_0), 
+                mean(cluster_1$beta_1)),
+  cluster_2 = c(mean(cluster_2$beta_0), 
+            mean(cluster_2$beta_1))
+)
+
+#Fit multivariate normal finite mixture model to the estimates
+analytic_indep_mix_models <- mvnormalmixEM(x = indep_err_par_est_tibble[,c(3,4)], mu = mu)
+
+summary(analytic_indep_mix_models)
+
 indep_error_post_par_table <- tibble(
   par_name = c("$\beta_0$", "$\beta_1$"),
   error = "Indep",
@@ -1427,6 +1445,22 @@ same_error_rk4_post_par_table <- tibble(
 )
 
 #Numerics with indep. error
+#Get some extreme estimates
+possible_error <- indep_err_numeric_par_est_tibble %>%
+  filter(beta_0 > mean(indep_err_numeric_par_est_tibble$beta_0))
+
+#To speed up the iterative algorithm we provide some initial conditions
+mu <- list( #Means from true parameters and extreme estimates
+  true = c(beta_0, beta_1),
+  error = c(mean(possible_error$beta_0), 
+            mean(possible_error$beta_1))
+)
+
+#Fit multivariate normal finite mixture model to the estimates
+numeric_indep_mix_models <- mvnormalmixEM(x = indep_err_numeric_par_est_tibble[,c(3,4)], mu = mu)
+
+summary(numeric_indep_mix_models)
+
 par_est_tibble_0_5_indep <- indep_err_numeric_par_est_tibble %>% #Filter out other step sizes and bad mode
   filter(beta_0 < 20)
 indep_error_rk4_post_par_table <- tibble(
@@ -1522,6 +1556,23 @@ pars_combo <- c(g_max = 0.8,
                 k = 1)
 y_0 <- 1
 par_names <- c("g_max", "y_max", "k")
+
+Canham_DE <- function(Time, State, Pars) { #Pars: g_max, y_max, k
+  with(as.list(c(State, Pars)), {
+    dY <- g_max * exp(-0.5 * (log(Y / y_max) / k)^2)
+    
+    return(list(c(dY)))
+  })
+}
+
+times <- seq(0, 49, by = 0.0001)
+yini  <- c(Y = y_0) #Initial condition
+canham_true_y <- ode(yini, times, Canham_DE, pars_combo, method = "rk4")[,2]
+canham_true_data <- tibble(
+  y = canham_true_y,
+  time = times
+) %>%
+  filter(time %in% seq(from = 0, to = 49, by = 5))
 
 canham_hist_1 <- ggplot(data = canham_par_est_tibble, aes(x=g_max)) +
   geom_histogram(fill = "lightblue",
@@ -1752,7 +1803,7 @@ plot_grid(upper_plot,
 plot_grid(upper_plot,
           hist_plot,
           nrow = 2)
-plot_grid(upper_plot, #Dims: 750,834 
+plot_grid(upper_plot, #Dims: 750,850 
           scatter_hist,
           nrow = 2,
           rel_heights = c(0.4, 0.6))
