@@ -11,7 +11,9 @@ Bertalanffy model.
 Here I document and demonstrate a more thorough investigation of that interaction.
 I demonstrate that posterior bimodality in is a sticky problem for numerics
 in the case of
+
 $$f\left( Y \left( t \right), \beta_0, \beta_1 \right) = \frac{dY}{dt} = \beta_0 - \beta_1 Y \left( t \right), $$
+
 across step sizes, different methods, priors, and parameter values. 
 I also demonstrate that the Canham model in [hmde](https://github.com/traitecoevo/hmde)
 is robust to similar problems with a suitable numerical method.
