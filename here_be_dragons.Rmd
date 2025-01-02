@@ -429,7 +429,7 @@ canham_obs_true <- ggplot(line_plot_data, aes(x = Time, y = Y, group = source)) 
 canham_obs_true
 
 # Get posterior estimates
-runs <- 10000
+runs <- 5000
 canham_par_est_tibble <- tibble(run = c(),
                                 g_max = c(),
                                 y_max = c(),
@@ -449,10 +449,10 @@ for(i in 1:runs){
   #Run the model
   suppressWarnings(
     fit <- hmde_model("canham_single_ind") |>
-      hmde_assign_data(n_obs = nrow(canham_obs_data),
-                       y_obs = canham_obs_data$y_obs,
-                       obs_index = canham_obs_data$obs_index,
-                       time = canham_obs_data$time)  |> 
+      hmde_assign_data(n_obs = nrow(canham_obs_data_temp),
+                       y_obs = canham_obs_data_temp$y_obs,
+                       obs_index = canham_obs_data_temp$obs_index,
+                       time = canham_obs_data_temp$time)  |> 
       hmde_run(chains = 1, cores = 1, iter = 2000)
   )
   
@@ -1344,24 +1344,6 @@ dist_table <- tibble( #Data to calculate distance
           mix_model_analytic$mu[[1]][2])
 )
 print(dist(dist_table))
-
-#Get mean and CIs
-same_error_post_par_table <- tibble(
-  par_name = c("$\beta_0$", "$\beta_1$"),
-  par_true = pars_combo,
-  par_mean = c(
-    mean(analytic_par_est_tibble$beta_0),
-    mean(analytic_par_est_tibble$beta_1)
-  ),
-  ci_lower = c(
-    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.025)),
-    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.025))
-  ),
-  ci_upper = c(
-    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.975)),
-    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.975))
-  )
-)
 ```
 
 ### Independent errors
@@ -1385,6 +1367,8 @@ indep_error_hist_1 <- ggplot(data = indep_err_par_est_tibble,
 
 indep_error_post_par_table <- tibble(
   par_name = c("$\beta_0$", "$\beta_1$"),
+  error = "Indep",
+  int = "Analytic",
   par_true = pars_combo,
   par_mean = c(
     mean(indep_err_par_est_tibble$beta_0),
@@ -1399,6 +1383,79 @@ indep_error_post_par_table <- tibble(
     as.numeric(quantile(indep_err_par_est_tibble$beta_1, probs = 0.975))
   )
 )
+
+#Get mean and CIs
+same_error_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  error = "Same obs.",
+  int = "Analytic",
+  par_true = pars_combo,
+  par_mean = c(
+    mean(analytic_par_est_tibble$beta_0),
+    mean(analytic_par_est_tibble$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.025)),
+    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(analytic_par_est_tibble$beta_0, probs = 0.975)),
+    as.numeric(quantile(analytic_par_est_tibble$beta_1, probs = 0.975))
+  )
+)
+
+#Get mean and CIs for numerics with same obs
+par_est_tibble_0_5 <- par_est_tibble %>% #Filter out other step sizes and bad mode
+  filter(step_size == 0.5, beta_0 < 20)
+same_error_rk4_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  error = "Same obs.",
+  int = "RK4",
+  par_true = pars_combo,
+  par_mean = c(
+    mean(par_est_tibble_0_5$beta_0),
+    mean(par_est_tibble_0_5$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(par_est_tibble_0_5$beta_0, probs = 0.025)),
+    as.numeric(quantile(par_est_tibble_0_5$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(par_est_tibble_0_5$beta_0, probs = 0.975)),
+    as.numeric(quantile(par_est_tibble_0_5$beta_1, probs = 0.975))
+  )
+)
+
+#Numerics with indep. error
+par_est_tibble_0_5_indep <- indep_err_numeric_par_est_tibble %>% #Filter out other step sizes and bad mode
+  filter(beta_0 < 20)
+indep_error_rk4_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  error = "Indep",
+  int = "RK4",
+  par_true = pars_combo,
+  par_mean = c(
+    mean(par_est_tibble_0_5_indep$beta_0),
+    mean(par_est_tibble_0_5_indep$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(par_est_tibble_0_5_indep$beta_0, probs = 0.025)),
+    as.numeric(quantile(par_est_tibble_0_5_indep$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(par_est_tibble_0_5_indep$beta_0, probs = 0.975)),
+    as.numeric(quantile(par_est_tibble_0_5_indep$beta_1, probs = 0.975))
+  )
+)
+
+bias_analysis_table <- rbind(indep_error_post_par_table,
+      indep_error_rk4_post_par_table,
+      same_error_post_par_table,
+      same_error_rk4_post_par_table
+      ) %>%
+  arrange(par_name, error)
+
+bias_analysis_table
 ```
 
 ### Alternate parameters
