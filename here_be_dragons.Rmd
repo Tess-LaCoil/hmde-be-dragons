@@ -986,6 +986,18 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
                       signif(step_size_mix_models_par_ests$error_beta_1[i], 
                              digits = 3)))
   
+  #Exclude intermediate steps
+  plot_data_reduced <- plot_data %>%
+    filter(time %in% 0:max_time)
+  
+  #Get error est
+  temp_rmse_true <- sqrt(
+    sum(plot_data_reduced$numerical_error^2)/nrow(plot_data_reduced)
+  )
+  temp_rmse_obs <- sqrt(
+    sum((plot_data_reduced$y_numeric- y_true)^2)/nrow(plot_data_reduced)
+  )
+  
   #Plot numerical stability
   stability_plots[[i]] <- ggplot(plot_data, 
                                  aes(x = time,
@@ -996,6 +1008,8 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
               linetype = legend_spec$linetypes[i], 
               linewidth = 1) +
     geom_hline(yintercept = 0, linetype = "solid", colour = "black") +
+    annotate("text", x = 7, y = (0.25*min(plot_data$numerical_error)),
+             label = paste0("RMSE: ", signif(temp_rmse_true, digits = 3))) +
     labs(title = paste0("Numerical error: step size ", plot_data$model[1]),
          x = "Time",
          y = "Error (numerical - analytic)") +
@@ -1015,9 +1029,7 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
          y = "Numerical solution") +
     theme_classic()
   
-  #Exclude intermediate steps
-  plot_data_reduced <- plot_data %>%
-    filter(time %in% 0:max_time)
+  
   
   size_analytic_plots[[i]] <- ggplot(plot_data_reduced, 
                                   aes(x=time, y=y_numeric)) +
@@ -1031,6 +1043,8 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
              alpha=1, size = 2, stroke = 1.5) +
   scale_shape_manual(values = legend_spec$shapes[i]) +
   scale_colour_manual(values = legend_spec$colours[i]) +
+    annotate("text", x = 7, y = 7.5,
+             label = paste0("RMSE: ", signif(temp_rmse_obs, digits = 3))) +
   labs(x = "Time", y = "Y(t)", 
        title = paste0("Estimated Y(t): step size ", plot_data_reduced$model[1]),
        colour = NULL,
@@ -1716,19 +1730,6 @@ plot_grid(
 )
 
 #Step size figures
-step_size_fig_list <- list()
-for(i in 1:3){
-  step_size_fig_list[[i]] <- plot_grid(
-    size_analytic_plots[[i]],
-    stability_plots[[i]],
-    scatterplot_good_only[[i]],
-    scatterplot_errors_only[[i]],
-    nrow = 2,
-    byrow = TRUE,
-    labels=lab_vec_4
-  )
-}
-
 plot_grid(
   size_analytic_plots[[1]],
     stability_plots[[1]],
