@@ -307,7 +307,7 @@ for(j in 1:length(beta_prior_testing)){
 ```
 
 ### Optimisation tests
-To better understand the posterior distribution shape we use the BFGS optimiser in Stan to test a grid of points around the posterior for a couple of different cases. 
+To check if what we observe is a quirk of MCMC, and to better understand the posterior distribution, we investigate a deterministic optimization algorithm instead. 
 ```{r}
 #Load model
 affine_model <- stan_model(file = "stan/affine_single_ind.stan")
@@ -424,8 +424,8 @@ rstan_data <- hmde_model("affine_single_ind") |>
                        int_method = 2)
 
 #Grid
-beta_0_grid <- seq(from = 8, to = 12, length.out = 100)
-beta_1_grid <- seq(from = 0.7, to = 1.3, length.out = 100)
+beta_0_grid <- seq(from = 9, to = 11, length.out = 100)
+beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
 
 save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
 
