@@ -37,6 +37,81 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
   return(temp)
 }
 
+opt_init_grid <- function(rstan_data, beta_0_vals, beta_1_vals){
+  #Grid
+  inits <- expand.grid(ind_beta_0 = beta_0_vals,
+                       ind_beta_1 = beta_1_vals) %>%
+    mutate(ind_const = ind_beta_0 - ind_beta_1*rstan_data$y_bar)
+
+  post_est <- tibble()
+  hessian_list <- list()
+
+  for(i in 1:nrow(inits)){
+    print(paste0("Run: ", i))
+
+    temp <- opt_affine_model(rstan_data,
+                             init_vec = inits[i,],
+                             run_no = i)
+
+    print(paste0("Runtime: ", round(temp$est_tibble_temp$runtime, digits = 4), " minutes."))
+
+    post_est <- rbind(post_est, temp$est_tibble_temp)
+    hessian_list[[i]] <- temp$hessian
+  }
+
+  return(
+    list(post_est = post_est,
+         hessian_list = hessian_list)
+  )
+}
+
+opt_affine_model <- function(rstan_data, init_vec = NULL, run_no){
+  if(!is.null(init_vec)){
+    init <- list(ind_y_0 = rstan_data$y_obs[1],
+       ind_const = init_vec$ind_const,
+       ind_beta_1 = init_vec$ind_beta_1,
+       y_hat = rstan_data$y_obs,
+       ind_beta_0 = init_vec$ind_beta_0,
+       pars = c(init_vec$ind_beta_0,
+                init_vec$ind_beta_1),
+       y_temp = 1)
+
+    start_time <- Sys.time()
+    fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
+                      hessian = TRUE,
+                      init = init)
+    end_time <- Sys.time()
+
+    est_tibble_temp <- tibble(
+      run = run_no,
+      runtime = difftime(end_time, start_time, units = "mins"),
+      beta_0_init = init_vec$ind_beta_0,
+      beta_1_init = init_vec$ind_beta_1,
+      beta_0 = fit$par[["ind_beta_0"]],
+      beta_1 = fit$par[["ind_beta_1"]]
+    )
+  } else {
+
+    start_time <- Sys.time()
+    fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
+                      hessian = TRUE)
+    end_time <- Sys.time()
+
+    est_tibble_temp <- tibble(
+      run = run_no,
+      runtime = difftime(end_time, start_time, units = "mins"),
+      beta_0 = fit$par[["ind_beta_0"]],
+      beta_1 = fit$par[["ind_beta_1"]]
+    )
+  }
+
+  return_data <- list(
+    est_tibble_temp = est_tibble_temp,
+    hessian = fit$hessian
+  )
+
+  return(return_data)
+}
 
 #Fit finite mixture model with 2 clusters for the affine model
 fit_mix_model <- function(par_est_data){

@@ -312,6 +312,80 @@ To better understand the posterior distribution shape we use the BFGS optimiser 
 #Load model
 affine_model <- stan_model(file = "stan/affine_single_ind.stan")
 
+#-----------------------------------------------------------------------------#
+#RK4 with no grid, 0.5 step size
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 1)
+
+rk4_random_post_est <- tibble()
+rk4_random_hessian <- list()
+for(i in 1:10000){
+  if(((i-1) %% 50) == 0){
+    print(paste0("Run: ", i))
+  }
+  
+  temp <- opt_affine_model(rstan_data, run_no = i)
+  
+  rk4_random_post_est <- rbind(rk4_random_post_est, temp$est_tibble_temp)
+  rk4_random_hessian[[i]] <- temp$hessian
+}
+save_data <- list(rk4_random_post_est, rk4_random_hessian)
+saveRDS(save_data, file = "output/rk4_random_optimizing.rds")
+
+#-----------------------------------------------------------------------------#
+#Analytic solution with no grid
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 3)
+
+analytic_random_post_est <- tibble()
+analytic_random_hessian <- list()
+for(i in 1:10000){
+  if(((i-1) %% 50) == 0){
+    print(paste0("Run: ", i))
+  }
+  
+  temp <- opt_affine_model(rstan_data, run_no = i)
+  
+  analytic_random_post_est <- rbind(analytic_random_post_est, temp$est_tibble_temp)
+  analytic_random_hessian[[i]] <- temp$hessian
+}
+
+save_data <- list(analytic_random_post_est, analytic_random_hessian)
+saveRDS(save_data, file = "output/analytic_random_optimizing.rds")
+
+
+#-----------------------------------------------------------------------------#
+#Analytic solution with 1 grid
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 3)
+
+#Grid
+beta_0_grid <- seq(from = 9, to = 11, length.out = 100)
+beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
+
+save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
+
+saveRDS(save_data, file = "output/analytic_grid_optimizing.rds")
+
+#-----------------------------------------------------------------------------#
 #RK4 with two grids, 0.5 step size
 rstan_data <- hmde_model("affine_single_ind") |>
       hmde_assign_data(n_obs = nrow(obs_data_frame),
@@ -323,30 +397,39 @@ rstan_data <- hmde_model("affine_single_ind") |>
                        int_method = 1)
 
 #Good parameter cluster
-beta_0_grid <- seq(from = 8, to = 12, length.out = 50)
-beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 50)
-inits <- expand.grid(beta_0 = beta_0_grid, 
-                     beta_1 = beta_1_grid)
-rk4_cluster1_post_est <- tibble()
-rk4_cluster1_hessian <- list()
+beta_0_grid <- seq(from = 8, to = 12, length.out = 100)
+beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
 
-for(i in 1:nrow(inits)){
-  fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
-                    hessian = TRUE, 
-                    init = list(beta_0 = inits$beta_0[i], 
-                                beta_1 = inits$beta_1[i]))
-  
-  est_tibble_temp <- tibble(
-    run = i,
-    beta_0_init = inits$beta_0[i],
-    beta_1_init = inits$beta_1[i],
-    beta_0_est = fit$par[[beta_0]],
-    beta_1_est = fit$par[[beta_1]]
-  )
-  
-  rk4_cluster1_post_est <- rbind(rk4_cluster1_post_est, est_tibble_temp)
-  rk4_cluster1_hessian[[i]] <- fit$hessian
-}
+save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
+
+saveRDS(save_data, file = "output/rk4_cluster1_optimizing.rds")
+
+#Bad parameter cluster
+beta_0_grid <- seq(from = 49, to = 51, length.out = 100)
+beta_1_grid <- seq(from = 4.9, to = 5.1, length.out = 100)
+
+save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
+
+saveRDS(save_data, file = "output/rk4_cluster2_optimizing.rds")
+
+#-----------------------------------------------------------------------------#
+#RK45 with one grid
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 2)
+
+#Grid
+beta_0_grid <- seq(from = 8, to = 12, length.out = 100)
+beta_1_grid <- seq(from = 0.7, to = 1.3, length.out = 100)
+
+save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
+
+saveRDS(save_data, file = "output/rk45_optimizing.rds")
 
 ```
 
@@ -389,50 +472,6 @@ for(i in 1:runs){
   
   diff_par_est_tibble <- rbind(diff_par_est_tibble, temp)
 } 
-```
-
-### Optimisation tests
-To better understand the posterior distribution shape we use the BFGS optimiser in Stan to test a grid of points around the posterior for a couple of different cases. 
-```{r}
-#Load model
-affine_model <- stan_model(file = "stan/affine_single_ind.stan")
-
-#RK4 with two grids, 0.5 step size
-rstan_data <- hmde_model("affine_single_ind") |>
-      hmde_assign_data(n_obs = nrow(obs_data_frame),
-                       y_obs = obs_data_frame$y_obs,
-                       obs_index = obs_data_frame$obs_index,
-                       time = obs_data_frame$time,
-                       y_bar = mean(obs_data_frame$y_obs),
-                       step_size = 0.5,
-                       int_method = 1)
-
-#Good parameter cluster
-beta_0_grid <- seq(from = 8, to = 12, length.out = 50)
-beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 50)
-inits <- expand.grid(beta_0 = beta_0_grid, 
-                     beta_1 = beta_1_grid)
-rk4_cluster1_post_est <- tibble()
-rk4_cluster1_hessian <- list()
-
-for(i in 1:nrow(inits)){
-  fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
-                    hessian = TRUE, 
-                    init = list(beta_0 = inits$beta_0[i], 
-                                beta_1 = inits$beta_1[i]))
-  
-  est_tibble_temp <- tibble(
-    run = i,
-    beta_0_init = inits$beta_0[i],
-    beta_1_init = inits$beta_1[i],
-    beta_0_est = fit$par[[beta_0]],
-    beta_1_est = fit$par[[beta_1]]
-  )
-  
-  rk4_cluster1_post_est <- rbind(rk4_cluster1_post_est, est_tibble_temp)
-  rk4_cluster1_hessian[[i]] <- fit$hessian
-}
-
 ```
 
 ### Checking Canham model for multi-modality in the posterior
@@ -1648,6 +1687,12 @@ dist(dist_table)
 
 diff_par_mix_models$mu[[2]][1]/diff_par_mix_models$mu[[2]][2]
 diff_par_mix_models$mu[[1]][1]/diff_par_mix_models$mu[[1]][2]
+
+```
+
+### Optimisation tests
+```{r}
+
 
 ```
 
