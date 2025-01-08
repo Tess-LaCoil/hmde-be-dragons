@@ -25,7 +25,7 @@ options(rmarkdown.html_vignette.check_title = FALSE)
 
 ## Load dependencies
 ```{r}
-#remotes::install_github("traitecoevo/hmde@bf1acfc0ec2e2c43d421d017fbeb28c44ad63940", force = TRUE)
+#remotes::install_github("traitecoevo/hmde@3435682c09f1378b3d1b7a23563ec4ae2240cbc4", force = TRUE)
 
 library(hmde)
 library(dplyr)
