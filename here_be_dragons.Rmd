@@ -313,7 +313,7 @@ To check if what we observe is a quirk of MCMC, and to better understand the pos
 affine_model <- stan_model(file = "stan/affine_single_ind.stan")
 
 #-----------------------------------------------------------------------------#
-#RK4 with no grid, 0.5 step size
+#RK4 with 0.5 step size
 rstan_data <- hmde_model("affine_single_ind") |>
       hmde_assign_data(n_obs = nrow(obs_data_frame),
                        y_obs = obs_data_frame$y_obs,
@@ -325,12 +325,12 @@ rstan_data <- hmde_model("affine_single_ind") |>
 
 rk4_random_post_est <- tibble()
 rk4_random_hessian <- list()
-for(i in 1:10000){
-  if(((i-1) %% 50) == 0){
+for(i in 1:10){
+  #if(((i-1) %% 50) == 0){
     print(paste0("Run: ", i))
-  }
+  #}
   
-  temp <- opt_affine_model(rstan_data, run_no = i)
+  temp <- opt_affine_model(rstan_data, run_no = i, verbose = TRUE)
   
   rk4_random_post_est <- rbind(rk4_random_post_est, temp$est_tibble_temp)
   rk4_random_hessian[[i]] <- temp$hessian
@@ -339,7 +339,7 @@ save_data <- list(rk4_random_post_est, rk4_random_hessian)
 saveRDS(save_data, file = "output/rk4_random_optimizing.rds")
 
 #-----------------------------------------------------------------------------#
-#Analytic solution with no grid
+#Analytic solution
 rstan_data <- hmde_model("affine_single_ind") |>
       hmde_assign_data(n_obs = nrow(obs_data_frame),
                        y_obs = obs_data_frame$y_obs,
@@ -364,73 +364,6 @@ for(i in 1:10000){
 
 save_data <- list(analytic_random_post_est, analytic_random_hessian)
 saveRDS(save_data, file = "output/analytic_random_optimizing.rds")
-
-
-#-----------------------------------------------------------------------------#
-#Analytic solution with 1 grid
-rstan_data <- hmde_model("affine_single_ind") |>
-      hmde_assign_data(n_obs = nrow(obs_data_frame),
-                       y_obs = obs_data_frame$y_obs,
-                       obs_index = obs_data_frame$obs_index,
-                       time = obs_data_frame$time,
-                       y_bar = mean(obs_data_frame$y_obs),
-                       step_size = 0.5,
-                       int_method = 3)
-
-#Grid
-beta_0_grid <- seq(from = 9, to = 11, length.out = 100)
-beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
-
-save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
-
-saveRDS(save_data, file = "output/analytic_grid_optimizing.rds")
-
-#-----------------------------------------------------------------------------#
-#RK4 with two grids, 0.5 step size
-rstan_data <- hmde_model("affine_single_ind") |>
-      hmde_assign_data(n_obs = nrow(obs_data_frame),
-                       y_obs = obs_data_frame$y_obs,
-                       obs_index = obs_data_frame$obs_index,
-                       time = obs_data_frame$time,
-                       y_bar = mean(obs_data_frame$y_obs),
-                       step_size = 0.5,
-                       int_method = 1)
-
-#Good parameter cluster
-beta_0_grid <- seq(from = 8, to = 12, length.out = 100)
-beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
-
-save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
-
-saveRDS(save_data, file = "output/rk4_cluster1_optimizing.rds")
-
-#Bad parameter cluster
-beta_0_grid <- seq(from = 49, to = 51, length.out = 100)
-beta_1_grid <- seq(from = 4.9, to = 5.1, length.out = 100)
-
-save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
-
-saveRDS(save_data, file = "output/rk4_cluster2_optimizing.rds")
-
-#-----------------------------------------------------------------------------#
-#RK45 with one grid
-rstan_data <- hmde_model("affine_single_ind") |>
-      hmde_assign_data(n_obs = nrow(obs_data_frame),
-                       y_obs = obs_data_frame$y_obs,
-                       obs_index = obs_data_frame$obs_index,
-                       time = obs_data_frame$time,
-                       y_bar = mean(obs_data_frame$y_obs),
-                       step_size = 0.5,
-                       int_method = 2)
-
-#Grid
-beta_0_grid <- seq(from = 9, to = 11, length.out = 100)
-beta_1_grid <- seq(from = 0.8, to = 1.2, length.out = 100)
-
-save_data <- opt_init_grid(rstan_data, beta_0_grid, beta_1_grid)
-
-saveRDS(save_data, file = "output/rk45_optimizing.rds")
-
 ```
 
 ### Alternate parameter values
@@ -603,6 +536,59 @@ for(i in 1:runs){
 ## Analysis
 The general workflow for each model is the same: fit a finite mixture model to identify clustering, get an estimate of the distance between clusters, then plot the posterior distribution clusters. Additional plots may be produced depending on which model is being tested.
 
+Some aesthetics for plots.
+```{r}
+legend_spec <- tibble(
+  step_size_name = c("0.5", "0.25", "0.125"),
+  step_size = c(0.5, 0.25, 0.125),
+  x = c(-10, -10, -10),
+  y = c(-10, -10, -10),
+  colours = c("#f8766d", "#00ba38", "#609cff"),
+  linetypes = c("longdash", "dashed", "dotted"),
+  shapes = c(19, 17, 15)
+) 
+
+legend_spec_with_true <- tibble(
+  step_size_name = c("0.5", "0.25", "0.125", "True pars"),
+  step_size = c(0.5, 0.25, 0.125, NA),
+  x = c(-10, -10, -10, -10),
+  y = c(-10, -10, -10, -10),
+  colours = c("#f8766d", "#00ba38", "#609cff", "black"),
+  linetypes = c("longdash", "dashed", "dotted", "solid"),
+  shapes = c(19, 17, 15, 3)
+)
+
+for(i in 1:nrow(legend_spec)){
+  fancy_name_no_step_size <- 
+  paste0("Beta_0 = ",
+         signif(step_size_mix_models_par_ests$error_beta_0[i],
+                digits = 3),
+         ",\n Beta_1 = ",
+         signif(step_size_mix_models_par_ests$error_beta_1[i], 
+                             digits = 3))
+  legend_spec$fancy_name_no_step_size[i] <- fancy_name_no_step_size
+  legend_spec_with_true$fancy_name_no_step_size[i] <- fancy_name_no_step_size
+  
+  fancy_name <- paste0("Step size ", step_size_mix_models_par_ests$step_size[i], 
+                       "\n", fancy_name_no_step_size)
+  
+  legend_spec$fancy_name[i] <- fancy_name
+  legend_spec_with_true$fancy_name[i] <- fancy_name
+}
+
+legend_spec_with_true$fancy_name_no_step_size[4] <-
+  paste0("Beta_0 = ",
+         beta_0,
+         ",\n Beta_1 = ",
+         beta_1)
+
+legend_spec_with_true$fancy_name[4] <-
+  paste0("True values\n Beta_0 = ",
+         beta_0,
+         ",\n Beta_1 = ",
+         beta_1)
+```
+
 ### Different step sizes
 We are going to fit a finite mixture model for each of the step sizes to tell us about the clustering in the posterior distributions. We assume that there are two clusters (you can check with scatter plots), that one is close to the true values and the other some distance away with much larger estimates for both, and use the mean for rows where $\hat{\beta_}_0 > mean(\hat{\beta_}_0)$ as our starting value for the iterative process to avoid singularities. The overall mean of the estimates works as a threshold for extreme values because of the bimodality and distance between clusters.
 
@@ -678,59 +664,6 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
 step_size_mix_models_par_ests
 ```
 We get bimodality in the posterior distributions, for all it's rarer for the smaller step sizes. Bias in the estimates closest to the true values is due to the same measurement error in the 'observed' data for all the fits. The second mode in the estimates arises from the numerical integration error as we will verify shortly. The extreme bimodality of the posterior is consistent behaviour, even though the point of the second mode shifts based on the step size.
-
-Some aesthetics before plots.
-```{r}
-legend_spec <- tibble(
-  step_size_name = c("0.5", "0.25", "0.125"),
-  step_size = c(0.5, 0.25, 0.125),
-  x = c(-10, -10, -10),
-  y = c(-10, -10, -10),
-  colours = c("#f8766d", "#00ba38", "#609cff"),
-  linetypes = c("longdash", "dashed", "dotted"),
-  shapes = c(19, 17, 15)
-) 
-
-legend_spec_with_true <- tibble(
-  step_size_name = c("0.5", "0.25", "0.125", "True pars"),
-  step_size = c(0.5, 0.25, 0.125, NA),
-  x = c(-10, -10, -10, -10),
-  y = c(-10, -10, -10, -10),
-  colours = c("#f8766d", "#00ba38", "#609cff", "black"),
-  linetypes = c("longdash", "dashed", "dotted", "solid"),
-  shapes = c(19, 17, 15, 3)
-)
-
-for(i in 1:nrow(legend_spec)){
-  fancy_name_no_step_size <- 
-  paste0("Beta_0 = ",
-         signif(step_size_mix_models_par_ests$error_beta_0[i],
-                digits = 3),
-         ",\n Beta_1 = ",
-         signif(step_size_mix_models_par_ests$error_beta_1[i], 
-                             digits = 3))
-  legend_spec$fancy_name_no_step_size[i] <- fancy_name_no_step_size
-  legend_spec_with_true$fancy_name_no_step_size[i] <- fancy_name_no_step_size
-  
-  fancy_name <- paste0("Step size ", step_size_mix_models_par_ests$step_size[i], 
-                       "\n", fancy_name_no_step_size)
-  
-  legend_spec$fancy_name[i] <- fancy_name
-  legend_spec_with_true$fancy_name[i] <- fancy_name
-}
-
-legend_spec_with_true$fancy_name_no_step_size[4] <-
-  paste0("Beta_0 = ",
-         beta_0,
-         ",\n Beta_1 = ",
-         beta_1)
-
-legend_spec_with_true$fancy_name[4] <-
-  paste0("True values\n Beta_0 = ",
-         beta_0,
-         ",\n Beta_1 = ",
-         beta_1)
-```
 
 We use scatter plots of the clusters for qualitative analysis. As the clusters are so distant from each other, and so tight around their means, we separate them out for plots. The mixture models gives a classification of each point in the data that we use to filter observations. As the clusters are so distant we can use other heuristics such as $\hat{\beta_}_0 > 2\beta_0$ which agree perfectly with the cluster analysis.
 
@@ -1692,7 +1625,51 @@ diff_par_mix_models$mu[[1]][1]/diff_par_mix_models$mu[[1]][2]
 
 ### Optimisation tests
 ```{r}
+optimizing_tests <- c("analytic", "rk4")
+optimizing_mix_model_list <- list()
+optimizing_scatter <- list()
 
+for(i in 1:length(optimizing_tests)){
+  data <- readRDS(paste0("output/", optimizing_tests[i], "_random_optimizing.rds"))
+  est_tibble <- data[[1]]
+  
+  optimizing_scatter[[i]] <- ggplot(data = est_tibble,
+       aes(x = beta_0, y = beta_1)) +
+    geom_point(colour = legend_spec$colours[1], 
+               shape = legend_spec$shapes[1], 
+               alpha = 0.5,
+               size = 2) +
+    labs(x = "beta_0 est.",
+           y = "beta_1 est.") +
+    theme_classic()
+
+  #Get some initialising estimates
+  cluster_1 <- est_tibble %>%
+    filter(beta_0 <= mean(est_tibble$beta_0))
+  cluster_2 <- est_tibble %>%
+    filter(beta_0 > mean(est_tibble$beta_0))
+  
+  #To speed up the iterative algorithm we provide some initial conditions
+  mu <- list( #Means from true parameters and extreme estimates
+    cluster_1_mean = c(mean(cluster_1$beta_0), 
+              mean(cluster_1$beta_1)),
+    cluster_2_mean = c(mean(cluster_2$beta_0), 
+              mean(cluster_2$beta_1))
+  )
+  
+  #Fit multivariate normal finite mixture model to the estimates
+  optimizing_mix_model_list[[i]] <- mvnormalmixEM(x = est_tibble[,c(4,5)], mu = mu)
+  summary(optimizing_mix_model_list[[i]])
+  print(optimizing_mix_model_list[[i]]$lambda)
+  
+  dist_table <- tibble( #Data to calculate distance
+    b_0 = c(optimizing_mix_model_list[[i]]$mu[[2]][1], 
+            optimizing_mix_model_list[[i]]$mu[[1]][1]),
+    b_1 = c(optimizing_mix_model_list[[i]]$mu[[2]][2], 
+            optimizing_mix_model_list[[i]]$mu[[1]][2])
+  )
+  print(dist(dist_table))
+}
 
 ```
 

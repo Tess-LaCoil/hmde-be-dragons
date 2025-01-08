@@ -37,7 +37,8 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
   return(temp)
 }
 
-opt_init_grid <- function(rstan_data, beta_0_vals, beta_1_vals){
+opt_init_grid <- function(rstan_data, beta_0_vals, beta_1_vals,
+                          verbose = FALSE, alg = "LBFGS"){
   #Grid
   inits <- expand.grid(ind_beta_0 = beta_0_vals,
                        ind_beta_1 = beta_1_vals) %>%
@@ -51,7 +52,9 @@ opt_init_grid <- function(rstan_data, beta_0_vals, beta_1_vals){
 
     temp <- opt_affine_model(rstan_data,
                              init_vec = inits[i,],
-                             run_no = i)
+                             run_no = i,
+                             verbose = verbose,
+                             alg = alg)
 
     print(paste0("Runtime: ", round(temp$est_tibble_temp$runtime, digits = 4), " minutes."))
 
@@ -65,7 +68,8 @@ opt_init_grid <- function(rstan_data, beta_0_vals, beta_1_vals){
   )
 }
 
-opt_affine_model <- function(rstan_data, init_vec = NULL, run_no){
+opt_affine_model <- function(rstan_data, init_vec = NULL, run_no,
+                             verbose = FALSE, alg = "LBFGS"){
   if(!is.null(init_vec)){
     init <- list(ind_y_0 = rstan_data$y_obs[1],
        ind_const = init_vec$ind_const,
@@ -77,13 +81,16 @@ opt_affine_model <- function(rstan_data, init_vec = NULL, run_no){
        y_temp = 1)
 
     start_time <- Sys.time()
-    fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
+    fit <- optimizing(affine_model, rstan_data,
+                      alg = alg,
                       hessian = TRUE,
-                      init = init)
+                      init = init,
+                      verbose = verbose)
     end_time <- Sys.time()
 
     est_tibble_temp <- tibble(
       run = run_no,
+      return = fit$return_code,
       runtime = difftime(end_time, start_time, units = "mins"),
       beta_0_init = init_vec$ind_beta_0,
       beta_1_init = init_vec$ind_beta_1,
@@ -93,12 +100,15 @@ opt_affine_model <- function(rstan_data, init_vec = NULL, run_no){
   } else {
 
     start_time <- Sys.time()
-    fit <- optimizing(affine_model, rstan_data, alg = "BFGS",
-                      hessian = TRUE)
+    fit <- optimizing(affine_model, rstan_data,
+                      alg = alg,
+                      hessian = TRUE,
+                      verbose = verbose)
     end_time <- Sys.time()
 
     est_tibble_temp <- tibble(
       run = run_no,
+      return = fit$return_code,
       runtime = difftime(end_time, start_time, units = "mins"),
       beta_0 = fit$par[["ind_beta_0"]],
       beta_1 = fit$par[["ind_beta_1"]]

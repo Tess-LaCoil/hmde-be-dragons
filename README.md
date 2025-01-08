@@ -1,9 +1,13 @@
 # Here Be Dragons: Bimodal posteriors arise from numerical error in longitudinal models
 
 This repo is an extended investigation of a quirk that I found while building 
-[hmde](https://github.com/traitecoevo/hmde). The problem arises from an interaction
-between Markov Chain Monte Carlo sampling and numerical error. When building the von Bertalanffy 
-(affine first order ODE) model, I observed persistent bimodality in the posterior 
+[hmde](https://github.com/traitecoevo/hmde). The problem arises from conditioning 
+parameters for a longitudinal model on numerical integration with error. It arises
+in both Markov Chain Monte Carlo sampling and deterministic optimisation methods 
+such as the BFGS algorithm.
+
+When building the von Bertalanffy (affine first order ODE) model for [hmde](https://github.com/traitecoevo/hmde), 
+I observed persistent bimodality in the posterior 
 parameter estimates when using numerical integration to estimate growth increments. 
 The fix for the package was to implement an analytic solution for the von 
 Bertalanffy model. 

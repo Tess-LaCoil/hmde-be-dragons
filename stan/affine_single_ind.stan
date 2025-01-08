@@ -122,8 +122,8 @@ model {
 
   //Priors
   //Individual level
-  ind_const ~normal(prior_means[1], prior_sds[1]);
-  ind_beta_1 ~lognormal(log(prior_means[2]), prior_sds[2]);
+  ind_const ~normal(0, 1);
+  ind_beta_1 ~lognormal(0, 1);
 }
 
 generated quantities{
