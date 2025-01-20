@@ -1702,7 +1702,7 @@ for(i in 1:length(optimizing_tests)){ #Plots
   est_tibble <- data[[1]] %>%
     mutate(converge = (return == 0),
            colour = legend_spec$colours[1],
-           shape = legend_spec$shapes[1])
+           shape = 20)
   
   #sqrt_det_vec <- c()
   #for(j in 1:nrow(est_tibble)){
@@ -1721,7 +1721,7 @@ for(i in 1:length(optimizing_tests)){ #Plots
        aes(x = beta_0, y = beta_1, group_by = as.factor(converge))) +
     geom_point(aes(colour = as.factor(converge), 
                    shape = as.factor(converge)),
-               stroke = 1.5,
+               stroke = 1,
                alpha = 0.5,
                size = 2) +
     scale_colour_manual(values = colours) +
