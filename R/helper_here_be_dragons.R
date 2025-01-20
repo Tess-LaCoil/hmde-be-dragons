@@ -109,6 +109,7 @@ opt_affine_model <- function(rstan_data, init_vec = NULL, run_no,
     est_tibble_temp <- tibble(
       run = run_no,
       return = fit$return_code,
+      lp_val = fit$value,
       runtime = difftime(end_time, start_time, units = "mins"),
       beta_0 = fit$par[["ind_beta_0"]],
       beta_1 = fit$par[["ind_beta_1"]]

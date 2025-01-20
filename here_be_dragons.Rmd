@@ -35,6 +35,7 @@ library(cowplot)
 library(mixtools)
 library(MASS)
 library(rstan)
+library(multimode)
 
 source("R/helper_here_be_dragons.R")
 ```
@@ -325,12 +326,12 @@ rstan_data <- hmde_model("affine_single_ind") |>
 
 rk4_random_post_est <- tibble()
 rk4_random_hessian <- list()
-for(i in 1:10){
-  #if(((i-1) %% 50) == 0){
+for(i in 1:10000){
+  if(((i-1) %% 50) == 0){
     print(paste0("Run: ", i))
-  #}
+  }
   
-  temp <- opt_affine_model(rstan_data, run_no = i, verbose = TRUE)
+  temp <- opt_affine_model(rstan_data, run_no = i)
   
   rk4_random_post_est <- rbind(rk4_random_post_est, temp$est_tibble_temp)
   rk4_random_hessian[[i]] <- temp$hessian
@@ -364,6 +365,70 @@ for(i in 1:10000){
 
 save_data <- list(analytic_random_post_est, analytic_random_hessian)
 saveRDS(save_data, file = "output/analytic_random_optimizing.rds")
+
+#-----------------------------------------------------------------------------#
+#Tests with independent error RK4
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 1)
+
+rk4_random_indep_post_est <- tibble()
+rk4_random_indep_hessian <- list()
+for(i in 1:10000){
+  if(((i-1) %% 50) == 0){
+    print(paste0("Run: ", i))
+  }
+  
+  rstan_data$y_obs <- round((y_true +
+                               rnorm(length(y_true),
+                                     0, 0.1)),
+                            digits = 1)
+  
+  temp <- opt_affine_model(rstan_data, run_no = i)
+  
+  rk4_random_indep_post_est <- rbind(rk4_random_indep_post_est, temp$est_tibble_temp)
+  rk4_random_indep_hessian[[i]] <- temp$hessian
+}
+
+save_data <- list(rk4_random_indep_post_est, rk4_random_indep_hessian)
+saveRDS(save_data, file = "output/rk4_random_indep_optimizing.rds")
+
+#-----------------------------------------------------------------------------#
+#Tests with independent error analytic
+rstan_data <- hmde_model("affine_single_ind") |>
+      hmde_assign_data(n_obs = nrow(obs_data_frame),
+                       y_obs = obs_data_frame$y_obs,
+                       obs_index = obs_data_frame$obs_index,
+                       time = obs_data_frame$time,
+                       y_bar = mean(obs_data_frame$y_obs),
+                       step_size = 0.5,
+                       int_method = 3)
+
+analytic_random_indep_post_est <- tibble()
+analytic_random_indep_hessian <- list()
+for(i in 1:10000){
+  if(((i-1) %% 50) == 0){
+    print(paste0("Run: ", i))
+  }
+  
+  rstan_data$y_obs <- round((y_true +
+                               rnorm(length(y_true),
+                                     0, 0.1)),
+                            digits = 1)
+  
+  temp <- opt_affine_model(rstan_data, run_no = i)
+  
+  analytic_random_indep_post_est <- rbind(analytic_random_indep_post_est, temp$est_tibble_temp)
+  analytic_random_indep_hessian[[i]] <- temp$hessian
+}
+
+save_data <- list(analytic_random_indep_post_est, analytic_random_indep_hessian)
+saveRDS(save_data, file = "output/analytic_random_indep_optimizing.rds")
 ```
 
 ### Alternate parameter values
@@ -1625,50 +1690,69 @@ diff_par_mix_models$mu[[1]][1]/diff_par_mix_models$mu[[1]][2]
 
 ### Optimisation tests
 ```{r}
-optimizing_tests <- c("analytic", "rk4")
+optimizing_tests <- c("rk4_random", "analytic_random", 
+                      "rk4_random_indep", "analytic_random_indep")
+test_name_fancy <- c("RK4", "Analytic Sol.", "RK4 Indep. Error", 
+                     "Analytic Sol. Indep. Error")
 optimizing_mix_model_list <- list()
 optimizing_scatter <- list()
 
-for(i in 1:length(optimizing_tests)){
-  data <- readRDS(paste0("output/", optimizing_tests[i], "_random_optimizing.rds"))
-  est_tibble <- data[[1]]
+for(i in 1:length(optimizing_tests)){ #Plots
+  data <- readRDS(paste0("output/", optimizing_tests[i], "_optimizing.rds"))
+  est_tibble <- data[[1]] %>%
+    mutate(converge = (return == 0),
+           colour = legend_spec$colours[1],
+           shape = legend_spec$shapes[1])
+  
+  #sqrt_det_vec <- c()
+  #for(j in 1:nrow(est_tibble)){
+  #  sqrt_det_vec[j] <- sqrt(det(data[[2]][[j]]))
+  #}
+  
+  print(paste0("Convergence prop: ", sum(est_tibble$converge)/nrow(est_tibble)))
+  
+  est_tibble$colour[!est_tibble$converge] <- legend_spec$colours[3]
+  est_tibble$shape[!est_tibble$converge] <- 4
+  
+  colours <- rev(unique(est_tibble$colour))
+  shapes <- rev(unique(est_tibble$shape))
   
   optimizing_scatter[[i]] <- ggplot(data = est_tibble,
-       aes(x = beta_0, y = beta_1)) +
-    geom_point(colour = legend_spec$colours[1], 
-               shape = legend_spec$shapes[1], 
+       aes(x = beta_0, y = beta_1, group_by = as.factor(converge))) +
+    geom_point(aes(colour = as.factor(converge), 
+                   shape = as.factor(converge)),
+               stroke = 1.5,
                alpha = 0.5,
                size = 2) +
+    scale_colour_manual(values = colours) +
+    scale_shape_manual(values = shapes) +
     labs(x = "beta_0 est.",
-           y = "beta_1 est.") +
-    theme_classic()
-
-  #Get some initialising estimates
-  cluster_1 <- est_tibble %>%
-    filter(beta_0 <= mean(est_tibble$beta_0))
-  cluster_2 <- est_tibble %>%
-    filter(beta_0 > mean(est_tibble$beta_0))
+           y = "beta_1 est.",
+         colour = "Alg. converged",
+         shape = "Alg. converged",
+         title = test_name_fancy[i]) +
+    theme_classic() +
+    theme(legend.position = "inside",
+          legend.position.inside = c(0.8,0.2))
+  
+  #Cluster points
+  est_tibble_converge <- est_tibble %>%
+    filter(converge == TRUE)
+  
+  cluster_1 <- est_tibble_converge %>%
+    filter(beta_0 <= mean(est_tibble_converge$beta_0))
+  cluster_2 <- est_tibble_converge %>%
+    filter(beta_0 > mean(est_tibble_converge$beta_0))
   
   #To speed up the iterative algorithm we provide some initial conditions
   mu <- list( #Means from true parameters and extreme estimates
     cluster_1_mean = c(mean(cluster_1$beta_0), 
               mean(cluster_1$beta_1)),
+    cluster_1_lp = mean(cluster_1$lp_val),
     cluster_2_mean = c(mean(cluster_2$beta_0), 
-              mean(cluster_2$beta_1))
+              mean(cluster_2$beta_1)),
+    cluster_2_lp = mean(cluster_2$lp_val)
   )
-  
-  #Fit multivariate normal finite mixture model to the estimates
-  optimizing_mix_model_list[[i]] <- mvnormalmixEM(x = est_tibble[,c(4,5)], mu = mu)
-  summary(optimizing_mix_model_list[[i]])
-  print(optimizing_mix_model_list[[i]]$lambda)
-  
-  dist_table <- tibble( #Data to calculate distance
-    b_0 = c(optimizing_mix_model_list[[i]]$mu[[2]][1], 
-            optimizing_mix_model_list[[i]]$mu[[1]][1]),
-    b_1 = c(optimizing_mix_model_list[[i]]$mu[[2]][2], 
-            optimizing_mix_model_list[[i]]$mu[[1]][2])
-  )
-  print(dist(dist_table))
 }
 
 ```
@@ -1874,6 +1958,17 @@ plot_grid(
   analytic_hist_1,
   ncol = 1,
   labels = lab_vec_4
+)
+
+#Optimizing tests
+plot_grid(
+  optimizing_scatter[[1]],
+  optimizing_scatter[[2]],
+  optimizing_scatter[[3]],
+  optimizing_scatter[[4]],
+  align = "hv",
+  nrow = 2,
+  labels= lab_vec_4
 )
 
 #Canham
