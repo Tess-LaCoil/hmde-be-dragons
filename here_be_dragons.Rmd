@@ -25,7 +25,7 @@ options(rmarkdown.html_vignette.check_title = FALSE)
 
 ## Load dependencies
 ```{r}
-#remotes::install_github("traitecoevo/hmde@3435682c09f1378b3d1b7a23563ec4ae2240cbc4", force = TRUE)
+#remotes::install_github("traitecoevo/hmde@24884ae847095f8163fb6bff6c03918c3147aa4f", force = TRUE)
 
 library(hmde)
 library(dplyr)
@@ -270,10 +270,11 @@ As the default priors for the $\beta$ parameters are closer to the true paramete
 We are going to test two different prior configurations: a set of means that is half-way between the correct parameters and the (previously estimated) known error point for step size 0.5; and a much smaller standard deviation for the default mean of 1.
 ```{r, eval = FALSE}
 step_size <- 0.5
-runs <- 100
+runs <- 10000
 beta_prior_testing <- list(
-  average_means_test = list(
-    prior_means = c(mean(c(10, 49.4)),
+  average_means_test = list( #Beta_c priors take transformation
+    prior_means = c(mean(c(10 - mean(obs_data_frame$y_obs), 
+                           49.4 - mean(obs_data_frame$y_obs) * 4.92)),
                      mean(c(1, 4.92))
     ),
     prior_sds = c(2,2) #Default value
@@ -303,8 +304,10 @@ for(j in 1:length(beta_prior_testing)){
     prior_test_est_tibble <- rbind(prior_test_est_tibble, temp)
   }
   
-  prior_test_est_tibble_list[[i]] <- prior_test_est_tibble
+  prior_test_est_tibble_list[[j]] <- prior_test_est_tibble
 }
+
+saveRDS(prior_test_est_tibble_list, "output/prior_test_est_tibble_list.rds")
 ```
 
 ### Optimisation tests
@@ -1382,8 +1385,9 @@ dist(dist_table)
 For each combination of priors we run a mixture model to get probability estimates.
 ```{r}
 beta_prior_testing <- list(
-  average_means_test = list(
-    prior_means = c(mean(c(10, 49.4)),
+  average_means_test = list( #Beta_c priors take transformation
+    prior_means = c(mean(c(10 - mean(obs_data_frame$y_obs), 
+                           49.4 - mean(obs_data_frame$y_obs) * 4.92)),
                      mean(c(1, 4.92))
     ),
     prior_sds = c(2,2) #Default value

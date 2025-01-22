@@ -2,7 +2,7 @@
 #Fit affine model
 fit_affine_model <- function(run_no, step_size, obs_data_frame,
                              int_method,
-                             prior_means = c(1,1),
+                             prior_means = c(0,1),
                              prior_sds = c(2,2)){
 
   print(paste0("Run: ", run_no, " step size: ", step_size,
@@ -23,8 +23,7 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
   )
 
   #Extract parameter estimates
-  ests <- hmde_extract_estimates(model = "affine_single_ind",
-                                 fit = fit,
+  ests <- hmde_extract_estimates(fit = fit,
                                  input_measurement_data = obs_data_frame)
 
   temp <- tibble(
