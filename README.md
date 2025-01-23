@@ -1,5 +1,10 @@
 # Here Be Dragons: Bimodal posteriors arise from numerical error in longitudinal models
 
+<!-- badges: start -->
+[![Lifecycle:
+experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+<!-- badges: end -->
+
 This repo is an extended investigation of a quirk that I found while building 
 [hmde](https://github.com/traitecoevo/hmde). The problem arises from conditioning 
 parameters for a longitudinal model on numerical integration with error. It arises
