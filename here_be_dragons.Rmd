@@ -25,7 +25,7 @@ options(rmarkdown.html_vignette.check_title = FALSE)
 
 ## Load dependencies
 ```{r}
-#remotes::install_github("traitecoevo/hmde@24884ae847095f8163fb6bff6c03918c3147aa4f", force = TRUE)
+#remotes::install_github("traitecoevo/hmde")
 
 library(hmde)
 library(dplyr)
@@ -150,14 +150,14 @@ We're going to run 100 fits with a step size of 1 using the custom RK4 solver an
 
 There are likely to be diagnostic problems but that is part of what we are here to explore so we will be ignoring them. Divergent transitions in particular are to be expected when we have the very different parameter estimates we see. Results are hidden for this block.
 ```{r, results='hide'}
-runs <- 100
+runs <- 10000
 step_sizes = c(0.5, 0.25, 0.125)
 par_est_tibble <- tibble(run = c(),
                          step_size = c(),
                          beta_0 = c(),
                          beta_1 = c())
 
-for(j in 1:length(step_sizes)){
+for(j in 2:length(step_sizes)){
   print(paste0("Fits for step size ", step_sizes[j]))
   for(i in 1:runs){
     temp <- fit_affine_model(run_no = i, 
@@ -168,6 +168,8 @@ for(j in 1:length(step_sizes)){
     par_est_tibble <- rbind(par_est_tibble, temp)
   } 
 }
+
+saveRDS(par_est_tibble, file = "output/par_est_tibble.rds")
 ```
 
 ### Better numerical method: Runge-Kutta 4-5 algorithm with adaptive step size
@@ -190,6 +192,7 @@ for(i in 1:runs){
   
   rk45_par_est_tibble <- rbind(rk45_par_est_tibble, temp)
 } 
+saveRDS(rk45_par_est_tibble, file = "output/rk45_par_est_tibble.rds")
 ```
 
 ### Analytic solution
@@ -269,19 +272,41 @@ As the default priors for the $\beta$ parameters are closer to the true paramete
 
 We are going to test two different prior configurations: a set of means that is half-way between the correct parameters and the (previously estimated) known error point for step size 0.5; and a much smaller standard deviation for the default mean of 1.
 ```{r, eval = FALSE}
+source("R/helper_here_be_dragons.R")
+
 step_size <- 0.5
 runs <- 10000
 beta_prior_testing <- list(
-  average_means_test = list( #Beta_c priors take transformation
-    prior_means = c(mean(c(10 - mean(obs_data_frame$y_obs), 
-                           49.4 - mean(obs_data_frame$y_obs) * 4.92)),
-                     mean(c(1, 4.92))
-    ),
-    prior_sds = c(2,2) #Default value
+  cluster_1_test = list(
+    name = "Cluster 1 location",
+    prior_pars_ind_const = c(9.952 - mean(obs_data_frame$y_obs) * 0.991,2),
+    prior_pars_ind_beta_1 = c(log(0.991),2)
   ),
-  small_sd_test <- list(
-    prior_means = c(1,1),
-    prior_sds = c(0.1,0.1)
+  cluster_2_test = list(
+    name = "Cluster 2 location",
+    prior_pars_ind_const = c(49.4 - mean(obs_data_frame$y_obs) * 4.92,2),
+    prior_pars_ind_beta_1 = c(log(4.92),2)
+  ),
+  midpoint_means_test = list( #Beta_c priors take transformation
+    name = "Cluster midpoint location",
+    prior_pars_ind_const = c(
+      mean(
+        c(9.952 - mean(obs_data_frame$y_obs) * 0.991,
+          49.4 - mean(obs_data_frame$y_obs) * 4.92)
+        ),
+      2
+    ),
+    prior_pars_ind_beta_1 = c(log(mean(c(1, 4.92))) , 2) #Default value
+  ),
+  small_sd_test = list(
+    name = "Small SD",
+    prior_pars_ind_const = c(1,0.1),
+    prior_pars_ind_beta_1 = c(0,0.1)
+  ),
+  microscopic_sd_test = list(
+    name = "Silly small SD",
+    prior_pars_ind_const = c(1,0.001),
+    prior_pars_ind_beta_1 = c(0,0.001)
   )
 )
 
@@ -296,10 +321,10 @@ for(j in 1:length(beta_prior_testing)){
   for(i in 1:runs){
     temp <- fit_affine_model(run_no = i, 
                      step_size = 0.5, 
-                     obs_data_frame,
+                     obs_data_frame = obs_data_frame,
                      int_method = 1,
-                     prior_means = beta_prior_testing[[j]]$prior_means,
-                     prior_sds = beta_prior_testing[[j]]$prior_sds)
+                     prior_pars_ind_const = beta_prior_testing[[j]]$prior_pars_ind_const,
+                     prior_pars_ind_beta_1 = beta_prior_testing[[j]]$prior_pars_ind_beta_1)
     
     prior_test_est_tibble <- rbind(prior_test_est_tibble, temp)
   }
@@ -664,13 +689,13 @@ We are going to fit a finite mixture model for each of the step sizes to tell us
 step_size_mix_models <- list()
 step_size_mix_model_plots <- list()
 step_size_mix_models_par_ests <- tibble(
+  step_size = c(),
   good_beta_0 = c(),
   good_beta_1 = c(),
   error_beta_0 = c(),
   error_beta_1 = c(),
-  step_size = c(),
-  error_fraction = c(),
-  dist = c()
+  dist = c(),
+  error_fraction = c()
 )
 
 for(i in 1:length(unique(par_est_tibble$step_size))){
@@ -679,10 +704,6 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
   
   analysis_data <- par_est_tibble %>%
     filter(step_size == step_size_selected)
-  
-#  temp <- fit_mix_model(par_est_data = analysis_data, 
-#                par_names = c("beta_0", "beta_1"), 
-#                true_pars = c(beta_0, beta_1))
   
   #Get some extreme estimates
   possible_error <- analysis_data %>%
@@ -715,13 +736,13 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
   
   #Extract values
   step_size_mix_models_par_ests_temp <- tibble(
+    step_size = step_size_selected,
     good_beta_0 = step_size_mix_models[[i]]$mu[[1]][1],
     good_beta_1 = step_size_mix_models[[i]]$mu[[1]][2],
     error_beta_0 = step_size_mix_models[[i]]$mu[[2]][1],
     error_beta_1 = step_size_mix_models[[i]]$mu[[2]][2],
-    step_size = step_size_selected,
-    error_prob = step_size_mix_models[[i]]$lambda[2],
-    dist = dist(dist_table)
+    dist = dist(dist_table),
+    error_prob = step_size_mix_models[[i]]$lambda[2]
   )
   
   step_size_mix_models_par_ests <- rbind(step_size_mix_models_par_ests, 
@@ -730,6 +751,7 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
 
 #Have a look at the estimates
 step_size_mix_models_par_ests
+write.csv(step_size_mix_models_par_ests, "output/step_size_mix_models_par_ests.csv")
 ```
 We get bimodality in the posterior distributions, for all it's rarer for the smaller step sizes. Bias in the estimates closest to the true values is due to the same measurement error in the 'observed' data for all the fits. The second mode in the estimates arises from the numerical integration error as we will verify shortly. The extreme bimodality of the posterior is consistent behaviour, even though the point of the second mode shifts based on the step size.
 
@@ -1352,14 +1374,17 @@ rk45_hist_1 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_1)) +
   theme_classic()
 
 #Get some extreme estimates
-possible_error <- rk45_par_est_tibble %>%
+cluster_1 <- rk45_par_est_tibble %>%
+  filter(beta_0 <= mean(rk45_par_est_tibble$beta_0))
+cluster_2 <- rk45_par_est_tibble %>%
   filter(beta_0 > mean(rk45_par_est_tibble$beta_0))
 
 #To speed up the iterative algorithm we provide some initial conditions
 mu <- list( #Means from true parameters and extreme estimates
-  true = c(beta_0, beta_1),
-  error = c(mean(possible_error$beta_0), 
-            mean(possible_error$beta_1))
+  cluster_1 = c(mean(cluster_1$beta_0), 
+            mean(cluster_1$beta_1)),
+  cluster_2 = c(mean(cluster_2$beta_0), 
+            mean(cluster_2$beta_1))
 )
 
 #Fit multivariate normal finite mixture model to the estimates
@@ -1379,66 +1404,6 @@ dist_table <- tibble( #Data to calculate distance
             rk45_mix_models$mu[[1]][2])
   )
 dist(dist_table)
-```
-
-### Alternate prior analysis
-For each combination of priors we run a mixture model to get probability estimates.
-```{r}
-beta_prior_testing <- list(
-  average_means_test = list( #Beta_c priors take transformation
-    prior_means = c(mean(c(10 - mean(obs_data_frame$y_obs), 
-                           49.4 - mean(obs_data_frame$y_obs) * 4.92)),
-                     mean(c(1, 4.92))
-    ),
-    prior_sds = c(2,2) #Default value
-  ),
-  small_sd_test <- list(
-    prior_means = c(1,1),
-    prior_sds = c(0.1,0.1)
-  )
-)
-
-mix_model_prior_list <- list()
-mix_model_prior_scatter <- list()
-#Scatter plot to check for evidence of further clusters
-for(i in 1:length(beta_prior_testing)){
-  prior_test_est_tibble <- prior_test_est_tibble_list[[i]]
-  
-  mix_model_prior_scatter[[i]] <- ggplot(data = prior_test_est_tibble,
-       aes(x = beta_0, y = beta_1)) +
-    geom_point(colour = legend_spec$colours[1], 
-               shape = legend_spec$shapes[1], 
-               alpha = 0.5,
-               size = 2) +
-    labs(x = "beta_0 est.",
-           y = "beta_1 est.") +
-    theme_classic()
-
-  #Get some initialising estimates
-  possible_error <- prior_test_est_tibble %>%
-    filter(beta_0 > mean(prior_test_est_tibble$beta_0))
-  
-  #To speed up the iterative algorithm we provide some initial conditions
-  mu <- list( #Means from true parameters and extreme estimates
-    true = c(beta_0, beta_1),
-    error = c(mean(possible_error$beta_0), 
-              mean(possible_error$beta_1))
-  )
-  
-  #Fit multivariate normal finite mixture model to the estimates
-  mix_model_prior_list[[i]] <- mvnormalmixEM(x = prior_test_est_tibble[,c(3,4)], mu = mu)
-  summary(mix_model_prior_list[[i]])
-  print(mix_model_prior_list[[i]]$lambda)
-  
-  dist_table <- tibble( #Data to calculate distance
-    b_0 = c(mix_model_prior_list[[i]]$mu[[2]][1], 
-            mix_model_prior_list[[i]]$mu[[1]][1]),
-    b_1 = c(mix_model_prior_list[[i]]$mu[[2]][2], 
-            mix_model_prior_list[[i]]$mu[[1]][2])
-  )
-  print(dist(dist_table))
-}
-
 ```
 
 ### Analytic solution analysis
@@ -1488,6 +1453,151 @@ dist_table <- tibble( #Data to calculate distance
           mix_model_analytic$mu[[1]][2])
 )
 print(dist(dist_table))
+```
+
+### Alternate prior analysis
+For each combination of priors we run a mixture model to get probability estimates.
+```{r}
+beta_prior_testing <- list(
+  cluster_1_test = list(
+    name = "Cluster 1 location",
+    prior_pars_ind_const = c(9.952 - mean(obs_data_frame$y_obs) * 0.991,2),
+    prior_pars_ind_beta_1 = c(log(0.991),2)
+  ),
+  cluster_2_test = list(
+    name = "Cluster 2 location",
+    prior_pars_ind_const = c(49.4 - mean(obs_data_frame$y_obs) * 4.92,2),
+    prior_pars_ind_beta_1 = c(log(4.92),2)
+  ),
+  midpoint_means_test = list( #Beta_c priors take transformation
+    name = "Cluster midpoint location",
+    prior_pars_ind_const = c(
+      mean(
+        c(9.952 - mean(obs_data_frame$y_obs) * 0.991,
+          49.4 - mean(obs_data_frame$y_obs) * 4.92)
+        ),
+      2
+    ),
+    prior_pars_ind_beta_1 = c(log(mean(c(1, 4.92))) , 2) #Default value
+  ),
+  small_sd_test = list(
+    name = "Small SD",
+    prior_pars_ind_const = c(1,0.1),
+    prior_pars_ind_beta_1 = c(0,0.1)
+  ),
+  microscopic_sd_test = list(
+    name = "Silly small SD",
+    prior_pars_ind_const = c(1,0.001),
+    prior_pars_ind_beta_1 = c(0,0.001)
+  )
+)
+
+mix_model_prior_list <- list()
+mix_model_prior_scatter <- list()
+dens_prior_est_table <- tibble(
+  prior = c(),
+  cluster_1_beta_0 = c(),
+  cluster_1_beta_1 = c(),
+  cluster_2_beta_0 = c(),
+  cluster_2_beta_1 = c(),
+  cluster_dist = c(),
+  cluster_1_prior_dens = c(),
+  cluster_2_prior_dens = c(),
+  cluster_1_post_prob = c(),
+  cluster_2_post_prob = c()
+)
+#Scatter plot to check for evidence of further clusters
+for(i in 1:length(beta_prior_testing)){
+  print(beta_prior_testing[[i]]$name) 
+  prior_test_est_tibble <- prior_test_est_tibble_list[[i]]
+  
+  mix_model_prior_scatter[[i]] <- ggplot(data = prior_test_est_tibble,
+       aes(x = beta_0, y = beta_1)) +
+    geom_point(colour = legend_spec$colours[1], 
+               shape = legend_spec$shapes[1], 
+               alpha = 0.5,
+               size = 2) +
+    labs(x = "beta_0 est.",
+           y = "beta_1 est.") +
+    theme_classic()
+
+  #Get some initialising estimates
+  cluster_1 <- prior_test_est_tibble %>%
+    filter(beta_0 <= mean(prior_test_est_tibble$beta_0))
+  cluster_2 <- prior_test_est_tibble %>%
+    filter(beta_0 > mean(prior_test_est_tibble$beta_0))
+  
+  #To speed up the iterative algorithm we provide some initial conditions
+  mu <- list( #Means from true parameters and extreme estimates
+    cluster_1 = c(mean(cluster_1$beta_0), 
+             mean(cluster_1$beta_1)),
+    cluster_2 = c(mean(cluster_2$beta_0), 
+              mean(cluster_2$beta_1))
+  )
+  
+  #Fit multivariate normal finite mixture model to the estimates
+  mix_model_prior_list[[i]] <- mvnormalmixEM(x = prior_test_est_tibble[,c(3,4)], mu = mu)
+  summary(mix_model_prior_list[[i]])
+  print(mix_model_prior_list[[i]]$lambda)
+  
+  # Estimate prior probabilities for each point, 
+  # taking into account the transformation of beta_c
+  prior_cluster_1_dens <- dnorm((mix_model_prior_list[[i]]$mu[[1]][1] -
+                                  mean(obs_data_frame$y_obs) *
+                                  mix_model_prior_list[[i]]$mu[[1]][2]), 
+                                beta_prior_testing[[i]]$prior_pars_ind_const[1], 
+                                beta_prior_testing[[i]]$prior_pars_ind_const[2]) *
+                          dnorm(log(mix_model_prior_list[[i]]$mu[[1]][2]),
+                                beta_prior_testing[[i]]$prior_pars_ind_beta_1[1], 
+                                beta_prior_testing[[i]]$prior_pars_ind_beta_1[2])
+  
+  prior_cluster_2_dens <- dnorm((mix_model_prior_list[[i]]$mu[[2]][1] -
+                                  mean(obs_data_frame$y_obs) *
+                                  mix_model_prior_list[[i]]$mu[[2]][2]),
+                                beta_prior_testing[[i]]$prior_pars_ind_const[1], 
+                                beta_prior_testing[[i]]$prior_pars_ind_const[2]) *
+                          dnorm(log(mix_model_prior_list[[i]]$mu[[2]][2]),
+                                beta_prior_testing[[i]]$prior_pars_ind_beta_1[1], 
+                                beta_prior_testing[[i]]$prior_pars_ind_beta_1[2])
+  
+  dist_table <- tibble( #Data to calculate distance
+    b_0 = c(mix_model_prior_list[[i]]$mu[[2]][1], 
+            mix_model_prior_list[[i]]$mu[[1]][1]),
+    b_1 = c(mix_model_prior_list[[i]]$mu[[2]][2], 
+            mix_model_prior_list[[i]]$mu[[1]][2])
+  )
+  print(dist(dist_table))
+  
+  dens_prior_temp <- tibble(prior = beta_prior_testing[[i]]$name,
+                            cluster_1_beta_0 = mix_model_prior_list[[i]]$mu[[1]][1],
+                            cluster_1_beta_1 = mix_model_prior_list[[i]]$mu[[1]][2],
+                            cluster_2_beta_0 = mix_model_prior_list[[i]]$mu[[2]][1],
+                            cluster_2_beta_1 = mix_model_prior_list[[i]]$mu[[2]][2],
+                            cluster_dist = dist(dist_table),
+                            cluster_1_prior_dens = prior_cluster_1_dens,
+                            cluster_2_prior_dens = prior_cluster_2_dens,
+                            cluster_1_post_prob = mix_model_prior_list[[i]]$lambda[1],
+                            cluster_2_post_prob = mix_model_prior_list[[i]]$lambda[2]
+                            )
+  
+  dens_prior_est_table <- rbind(dens_prior_est_table, dens_prior_temp)
+}
+
+dens_prior_est_table
+
+dens_prior_est_table_rounded <- dens_prior_est_table %>%
+  mutate(
+    cluster_1_beta_0 = signif(cluster_1_beta_0, digits = 4),
+    cluster_1_beta_1 = signif(cluster_1_beta_1, digits = 4),
+    cluster_2_beta_0 = signif(cluster_2_beta_0, digits = 4),
+    cluster_2_beta_1 = signif(cluster_2_beta_1, digits = 4),
+    cluster_dist = signif(cluster_dist, digits = 4),
+    cluster_1_prior_dens = signif(cluster_1_prior_dens, digits = 4),
+    cluster_2_prior_dens = signif(cluster_2_prior_dens, digits = 4),
+    cluster_1_post_prob = signif(cluster_1_post_prob, digits = 4),
+    cluster_2_post_prob = signif(cluster_2_post_prob, digits = 4)
+  )
+write.csv(dens_prior_est_table_rounded, file = "output/dens_prior_est_table_rounded.csv", row.names = FALSE)
 ```
 
 ### Independent errors

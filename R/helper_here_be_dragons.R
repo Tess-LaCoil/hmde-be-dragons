@@ -2,8 +2,8 @@
 #Fit affine model
 fit_affine_model <- function(run_no, step_size, obs_data_frame,
                              int_method,
-                             prior_means = c(0,1),
-                             prior_sds = c(2,2)){
+                             prior_pars_ind_const = c(1,2),
+                             prior_pars_ind_beta_1 = c(0,2)){
 
   print(paste0("Run: ", run_no, " step size: ", step_size,
                " Int method: ", int_method))
@@ -17,8 +17,8 @@ fit_affine_model <- function(run_no, step_size, obs_data_frame,
                        y_bar = mean(obs_data_frame$y_obs),
                        step_size = step_size,
                        int_method = int_method,
-                       prior_means = prior_means,
-                       prior_sds = prior_sds)  |>  #RK4
+                       prior_pars_ind_const = prior_pars_ind_const,
+                       prior_pars_ind_beta_1 = prior_pars_ind_beta_1)  |>  #RK4
       hmde_run(chains = 1, cores = 1, iter = 2000)
   )
 
