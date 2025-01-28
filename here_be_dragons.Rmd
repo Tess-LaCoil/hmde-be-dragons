@@ -687,16 +687,19 @@ We are going to fit a finite mixture model for each of the step sizes to tell us
 
 ```{r}
 step_size_mix_models <- list()
-step_size_mix_model_plots <- list()
 step_size_mix_models_par_ests <- tibble(
   step_size = c(),
   good_beta_0 = c(),
   good_beta_1 = c(),
   error_beta_0 = c(),
   error_beta_1 = c(),
+  m_dist_c1 = c(),
+  m_dist_c2 = c(),
   dist = c(),
   error_fraction = c()
 )
+
+m_dist_centre <- c(9.946, 0.991)
 
 for(i in 1:length(unique(par_est_tibble$step_size))){
   #Get data for single step size
@@ -705,27 +708,8 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
   analysis_data <- par_est_tibble %>%
     filter(step_size == step_size_selected)
   
-  #Get some extreme estimates
-  possible_error <- analysis_data %>%
-    filter(beta_0 > mean(analysis_data$beta_0))
-  
-  #To speed up the iterative algorithm we provide some initial conditions
-  mu <- list( #Means from true parameters and extreme estimates
-    true = c(beta_0, beta_1),
-    error = c(mean(possible_error$beta_0), 
-              mean(possible_error$beta_1))
-  )
-  
   #Fit multivariate normal finite mixture model to the estimates
-  step_size_mix_models[[i]] <- mvnormalmixEM(x = analysis_data[,c(3,4)], mu = mu)
-  
-  print(paste0("Summary of mixture model for step size ", step_size_selected))
-  print(summary(step_size_mix_models[[i]]))
-  
-  step_size_mix_model_plots[[i]] <- plot(step_size_mix_models[[i]], 
-                               whichplots = 2, 
-                               xlab2 = "Beta 0", 
-                               ylab2 = "Beta 1")
+  step_size_mix_models[[i]] <- fit_mix_model(analysis_data[,c(3,4)])
   
   dist_table <- tibble( #Data to calculate distance
     b_0 = c(step_size_mix_models[[i]]$mu[[2]][1], 
@@ -741,7 +725,13 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
     good_beta_1 = step_size_mix_models[[i]]$mu[[1]][2],
     error_beta_0 = step_size_mix_models[[i]]$mu[[2]][1],
     error_beta_1 = step_size_mix_models[[i]]$mu[[2]][2],
-    dist = dist(dist_table),
+    m_dist_c1 = mahalanobis(step_size_mix_models[[i]]$mu[[1]], 
+                            center = m_dist_centre, 
+                            cov = step_size_mix_models[[i]]$sigma[[1]]),
+    m_dist_c2 = mahalanobis(step_size_mix_models[[i]]$mu[[2]], 
+                            center = m_dist_centre, 
+                            cov = step_size_mix_models[[i]]$sigma[[2]]),
+    euclid_dist = dist(dist_table),
     error_prob = step_size_mix_models[[i]]$lambda[2]
   )
   
@@ -1361,6 +1351,8 @@ est_scatter
 ### RK45 analysis
 We're going to take a look at the RK45 method parameter estimates.
 ```{r}
+m_dist_centre <- c(9.946, 0.991)
+
 rk45_hist_0 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
                  colour = "black") +
@@ -1373,36 +1365,25 @@ rk45_hist_1 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_1)) +
   labs(x = "beta_1 estimates") +
   theme_classic()
 
-#Get some extreme estimates
-cluster_1 <- rk45_par_est_tibble %>%
-  filter(beta_0 <= mean(rk45_par_est_tibble$beta_0))
-cluster_2 <- rk45_par_est_tibble %>%
-  filter(beta_0 > mean(rk45_par_est_tibble$beta_0))
-
-#To speed up the iterative algorithm we provide some initial conditions
-mu <- list( #Means from true parameters and extreme estimates
-  cluster_1 = c(mean(cluster_1$beta_0), 
-            mean(cluster_1$beta_1)),
-  cluster_2 = c(mean(cluster_2$beta_0), 
-            mean(cluster_2$beta_1))
-)
-
 #Fit multivariate normal finite mixture model to the estimates
-rk45_mix_models <- mvnormalmixEM(x = rk45_par_est_tibble[,c(3,4)], mu = mu)
+rk45_mix_models <- fit_mix_model(rk45_par_est_tibble[,c(3,4)])
 
-summary(rk45_mix_models)
+print("Cluster 1 M. dist")
+mahalanobis(rk45_mix_models$mu[[1]],
+            center = m_dist_centre,
+            cov = rk45_mix_models$sigma[[1]])
+print("Cluster 2 M. dist")
+mahalanobis(rk45_mix_models$mu[[2]],
+            center = m_dist_centre,
+            cov = rk45_mix_models$sigma[[2]])
 
-plot(rk45_mix_models,
-     whichplots = 2,
-     xlab2 = "Beta 0",
-     ylab2 = "Beta 1")
-
-dist_table <- tibble( #Data to calculate distance
+dist_table <- tibble( #Data to calculate Euclidean distance
     b_0 = c(rk45_mix_models$mu[[2]][1], 
             rk45_mix_models$mu[[1]][1]),
     b_1 = c(rk45_mix_models$mu[[2]][2], 
             rk45_mix_models$mu[[1]][2])
   )
+print("Euclidean dist")
 dist(dist_table)
 ```
 
@@ -1430,19 +1411,8 @@ analytic_hist_1 <- ggplot(data = analytic_par_est_tibble, aes(x=beta_1)) +
   labs(x = "beta_1 estimates") +
   theme_classic()
 
-#Get some initialising estimates
-possible_error <- analytic_par_est_tibble %>%
-  filter(beta_0 > mean(analytic_par_est_tibble$beta_0))
-
-#To speed up the iterative algorithm we provide some initial conditions
-mu <- list( #Means from true parameters and extreme estimates
-  true = c(beta_0, beta_1),
-  error = c(mean(possible_error$beta_0), 
-            mean(possible_error$beta_1))
-)
-
 #Fit multivariate normal finite mixture model to the estimates
-mix_model_analytic <- mvnormalmixEM(x = analytic_par_est_tibble[,c(3,4)], mu = mu)
+mix_model_analytic <- fit_mix_model(x = analytic_par_est_tibble[,c(3,4)])
 summary(mix_model_analytic)
 print(mix_model_analytic$lambda)
 
@@ -1458,6 +1428,8 @@ print(dist(dist_table))
 ### Alternate prior analysis
 For each combination of priors we run a mixture model to get probability estimates.
 ```{r}
+m_dist_centre <- c(9.946, 0.991)
+
 beta_prior_testing <- list(
   cluster_1_test = list(
     name = "Cluster 1 location",
@@ -1500,13 +1472,19 @@ dens_prior_est_table <- tibble(
   cluster_1_beta_1 = c(),
   cluster_2_beta_0 = c(),
   cluster_2_beta_1 = c(),
-  cluster_dist = c(),
   cluster_1_prior_dens = c(),
   cluster_2_prior_dens = c(),
   cluster_1_post_prob = c(),
   cluster_2_post_prob = c()
 )
-#Scatter plot to check for evidence of further clusters
+
+prior_test_dist_table <- tibble(
+  prior = c(),
+  m_dist_c1 = c(),
+  m_dist_c2 = c(),
+  cluster_euclid_dist = c(),
+)
+
 for(i in 1:length(beta_prior_testing)){
   print(beta_prior_testing[[i]]$name) 
   prior_test_est_tibble <- prior_test_est_tibble_list[[i]]
@@ -1520,25 +1498,9 @@ for(i in 1:length(beta_prior_testing)){
     labs(x = "beta_0 est.",
            y = "beta_1 est.") +
     theme_classic()
-
-  #Get some initialising estimates
-  cluster_1 <- prior_test_est_tibble %>%
-    filter(beta_0 <= mean(prior_test_est_tibble$beta_0))
-  cluster_2 <- prior_test_est_tibble %>%
-    filter(beta_0 > mean(prior_test_est_tibble$beta_0))
-  
-  #To speed up the iterative algorithm we provide some initial conditions
-  mu <- list( #Means from true parameters and extreme estimates
-    cluster_1 = c(mean(cluster_1$beta_0), 
-             mean(cluster_1$beta_1)),
-    cluster_2 = c(mean(cluster_2$beta_0), 
-              mean(cluster_2$beta_1))
-  )
   
   #Fit multivariate normal finite mixture model to the estimates
-  mix_model_prior_list[[i]] <- mvnormalmixEM(x = prior_test_est_tibble[,c(3,4)], mu = mu)
-  summary(mix_model_prior_list[[i]])
-  print(mix_model_prior_list[[i]]$lambda)
+  mix_model_prior_list[[i]] <- fit_mix_model(prior_test_est_tibble[,c(3,4)])
   
   # Estimate prior probabilities for each point, 
   # taking into account the transformation of beta_c
@@ -1566,24 +1528,32 @@ for(i in 1:length(beta_prior_testing)){
     b_1 = c(mix_model_prior_list[[i]]$mu[[2]][2], 
             mix_model_prior_list[[i]]$mu[[1]][2])
   )
-  print(dist(dist_table))
   
   dens_prior_temp <- tibble(prior = beta_prior_testing[[i]]$name,
                             cluster_1_beta_0 = mix_model_prior_list[[i]]$mu[[1]][1],
                             cluster_1_beta_1 = mix_model_prior_list[[i]]$mu[[1]][2],
                             cluster_2_beta_0 = mix_model_prior_list[[i]]$mu[[2]][1],
                             cluster_2_beta_1 = mix_model_prior_list[[i]]$mu[[2]][2],
-                            cluster_dist = dist(dist_table),
                             cluster_1_prior_dens = prior_cluster_1_dens,
                             cluster_2_prior_dens = prior_cluster_2_dens,
                             cluster_1_post_prob = mix_model_prior_list[[i]]$lambda[1],
                             cluster_2_post_prob = mix_model_prior_list[[i]]$lambda[2]
                             )
   
+  prior_test_dist_table_temp <- tibble(
+    prior = c(),
+    m_dist_c1 = mahalanobis(mix_model_prior_list[[i]]$mu[[1]], 
+                            center = m_dist_centre, 
+                            cov = mix_model_prior_list[[i]]$sigma[[1]]),
+    m_dist_c2 = mahalanobis(mix_model_prior_list[[i]]$mu[[2]], 
+                            center = m_dist_centre, 
+                            cov = mix_model_prior_list[[i]]$sigma[[2]]),
+    cluster_euclid_dist = dist(dist_table)
+  )
+  
+  prior_test_dist_table <- rbind(prior_test_dist_table, prior_test_dist_table_temp)
   dens_prior_est_table <- rbind(dens_prior_est_table, dens_prior_temp)
 }
-
-dens_prior_est_table
 
 dens_prior_est_table_rounded <- dens_prior_est_table %>%
   mutate(
@@ -1591,19 +1561,27 @@ dens_prior_est_table_rounded <- dens_prior_est_table %>%
     cluster_1_beta_1 = signif(cluster_1_beta_1, digits = 4),
     cluster_2_beta_0 = signif(cluster_2_beta_0, digits = 4),
     cluster_2_beta_1 = signif(cluster_2_beta_1, digits = 4),
-    cluster_dist = signif(cluster_dist, digits = 4),
     cluster_1_prior_dens = signif(cluster_1_prior_dens, digits = 4),
     cluster_2_prior_dens = signif(cluster_2_prior_dens, digits = 4),
     cluster_1_post_prob = signif(cluster_1_post_prob, digits = 4),
     cluster_2_post_prob = signif(cluster_2_post_prob, digits = 4)
   )
 write.csv(dens_prior_est_table_rounded, file = "output/dens_prior_est_table_rounded.csv", row.names = FALSE)
+
+prior_test_dist_table_rounded <- prior_test_dist_table %>%
+  mutate(
+    m_dist_c1 = signif(m_dist_c1, digits = 4),
+    m_dist_c2 = signif(m_dist_c2, digits = 4),
+    cluster_euclid_dist = signif(cluster_euclid_dist, digits = 4)
+  )
+write.csv(prior_test_dist_table_rounded, file = "output/prior_test_dist_table_rounded.csv", row.names = FALSE)
 ```
 
 ### Independent errors
 We check that the independent error fits with the analytic solution produced a (minimally biased) unbiased estimate of the parameters. We get more variance in the estimates, but they are centred at the correct values.
 ```{r}
 pars_combo <- c(beta_0, beta_1)
+m_dist_centre <- c(beta_0, beta_1)
 
 indep_error_hist_0 <- ggplot(data = indep_err_par_est_tibble, 
                              aes(x=beta_0)) +
@@ -1619,21 +1597,8 @@ indep_error_hist_1 <- ggplot(data = indep_err_par_est_tibble,
   labs(x = "beta_1 estimates") +
   theme_classic()
 
-#Split into clusters
-cluster_1 <- indep_err_par_est_tibble %>%
-  filter(beta_0 > mean(indep_err_par_est_tibble$beta_0))
-cluster_2 <- indep_err_par_est_tibble %>%
-  filter(beta_0 <= mean(indep_err_par_est_tibble$beta_0))
-
-mu <- list( #Means from true parameters and extreme estimates
-  cluster_1 = c(mean(cluster_1$beta_0), 
-                mean(cluster_1$beta_1)),
-  cluster_2 = c(mean(cluster_2$beta_0), 
-            mean(cluster_2$beta_1))
-)
-
 #Fit multivariate normal finite mixture model to the estimates
-analytic_indep_mix_models <- mvnormalmixEM(x = indep_err_par_est_tibble[,c(3,4)], mu = mu)
+analytic_indep_mix_models <- fit_mix_model(indep_err_par_est_tibble[,c(3,4)])
 
 summary(analytic_indep_mix_models)
 
@@ -1699,19 +1664,8 @@ same_error_rk4_post_par_table <- tibble(
 )
 
 #Numerics with indep. error
-#Get some extreme estimates
-possible_error <- indep_err_numeric_par_est_tibble %>%
-  filter(beta_0 > mean(indep_err_numeric_par_est_tibble$beta_0))
-
-#To speed up the iterative algorithm we provide some initial conditions
-mu <- list( #Means from true parameters and extreme estimates
-  true = c(beta_0, beta_1),
-  error = c(mean(possible_error$beta_0), 
-            mean(possible_error$beta_1))
-)
-
 #Fit multivariate normal finite mixture model to the estimates
-numeric_indep_mix_models <- mvnormalmixEM(x = indep_err_numeric_par_est_tibble[,c(3,4)], mu = mu)
+numeric_indep_mix_models <- fit_mix_model(indep_err_numeric_par_est_tibble[,c(3,4)])
 
 summary(numeric_indep_mix_models)
 
@@ -1769,18 +1723,8 @@ ggplot(data = diff_par_est_tibble,
        y = "beta_1 estimates") +
   theme_classic()
 
-#Get some extreme estimates
-possible_error <- diff_par_est_tibble %>%
-  filter(beta_0 > mean(diff_par_est_tibble$beta_0))
-
-#To speed up the iterative algorithm we provide some initial conditions
-mu <- list( #Means from true parameters and extreme estimates
-  true = c(beta_0, beta_1),
-  error = c(mean(possible_error$beta_0), 
-            mean(possible_error$beta_1))
-)
-
-diff_par_mix_models <- mvnormalmixEM(x = diff_par_est_tibble[,c(3,4)], mu = mu)
+#Fit mixture model
+diff_par_mix_models <- fit_mix_model(diff_par_est_tibble[,c(3,4)])
 
 summary(diff_par_mix_models)
 
