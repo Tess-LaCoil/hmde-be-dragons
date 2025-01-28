@@ -176,7 +176,7 @@ saveRDS(par_est_tibble, file = "output/par_est_tibble.rds")
 To show that these problems can be dealt with, we will use the RK45 solver which includes an adaptive step size to reduce error. These models can also take time to run because of the adaptive step size, so this block does not run by default. Occasionally the sampler will start at a bad parameter combination and the RK45 algorithm will fail to converge, but this is usually solved by the next sample iteration and is a result of the affine ODE being a numerical nightmare.
 
 ```{r, eval = FALSE}
-runs <- 100
+runs <- 10000
 rk45_par_est_tibble <- tibble(run = c(),
                          step_size = c(),
                          beta_0 = c(),
@@ -214,13 +214,15 @@ for(i in 1:runs){
   
   analytic_par_est_tibble <- rbind(analytic_par_est_tibble, temp)
 } 
+
+saveRDS(analytic_par_est_tibble, file = "output/analytic_par_est_tibble.rds")
 ```
 
 ### Independent error
 To show that the bias in the better estimate mode is due to the observations we do another set of runs with the analytic solution, numerical solution, and independent error for each chain instead of using the same set of observations.
 ```{r}
 runs <- 10000
-indep_err_par_est_tibble <- tibble(run = c(),
+indep_err_analytic_par_est_tibble <- tibble(run = c(),
                          step_size = c(),
                          beta_0 = c(),
                          beta_1 = c())
@@ -240,8 +242,9 @@ for(i in 1:runs){ #Analytic solution
   
   temp$step_size[1] <- "Analytic"
   
-  indep_err_par_est_tibble <- rbind(indep_err_par_est_tibble, temp)
+  indep_err_analytic_par_est_tibble <- rbind(indep_err_analytic_par_est_tibble, temp)
 } 
+saveRDS(indep_err_analytic_par_est_tibble, file = "output/indep_err_analytic_par_est_tibble.rds")
 
 #Numerical method
 indep_err_numeric_par_est_tibble <- tibble(run = c(),
@@ -265,6 +268,7 @@ for(i in 1:runs){ #RK4
   
   indep_err_numeric_par_est_tibble <- rbind(indep_err_numeric_par_est_tibble, temp)
 } 
+saveRDS(indep_err_numeric_par_est_tibble, file = "output/analytic_par_est_tibble.rds")
 ```
 
 ### Testing different priors
@@ -498,6 +502,8 @@ for(i in 1:runs){
   
   diff_par_est_tibble <- rbind(diff_par_est_tibble, temp)
 } 
+
+saveRDS(diff_par_est_tibble, "output/diff_par_est_tibble.rds")
 ```
 
 ### Checking Canham model for multi-modality in the posterior
