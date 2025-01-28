@@ -124,11 +124,11 @@ opt_affine_model <- function(rstan_data, init_vec = NULL, run_no,
 }
 
 #Fit finite mixture model with 2 clusters for the affine model
-fit_mix_model <- function(par_est_data){
-  luster_1 <- par_est_data %>%
-    filter(beta_0 > mean(par_est_data$beta_0))
+fit_mix_model <- function(est_data){ #Pass in only the columns with parameter values
+  cluster_1 <- est_data %>%
+    filter(beta_0 <= mean(est_data$beta_0))
   cluster_2 <- par_est_data %>%
-    filter(beta_0 <= mean(par_est_data$beta_0))
+    filter(beta_0 > mean(est_data$beta_0))
 
   mu <- list( #Means from true parameters and extreme estimates
     cluster_1 = c(mean(cluster_1$beta_0),
@@ -138,20 +138,29 @@ fit_mix_model <- function(par_est_data){
   )
 
   #Fit multivariate normal finite mixture model to the estimates
-  mix_model <- mvnormalmixEM(x = par_est_data[,c(3,4)], mu = mu)
+  mix_model <- mvnormalmixEM(x = est_data, mu = mu)
 
-  dist_table <- tibble( #Data to calculate distance
+  return(mix_model)
+}
+
+#Distance calculation
+calculate_cluster_distances <- function(mix_model, centre){
+  dist_table <- tibble( #Data to calculate Euclidean distance
     b_0 = c(mix_model$mu[[2]][1],
             mix_model$mu[[1]][1]),
     b_1 = c(mix_model$mu[[2]][2],
             mix_model$mu[[1]][2])
   )
 
-  return(list(
-      mix_model = mix_model,
-      dist = dist(dist_table)
-    )
+  dist_vec <- c(m_dist_c1 =  mahalanobis(mix_model$mu[[1]],
+              center = centre,
+              cov = mix_model$sigma[[1]]),
+              m_dist_c2 = mahalanobis(mix_model$mu[[2]],
+                                      center = centre,
+                                      cov = mix_model$sigma[[2]]),
+              cluster_euclid_dist = dist(dist_table)
   )
+  return(dist_vec)
 }
 
 #Plotting clusters, 1 and 2 dimensions
