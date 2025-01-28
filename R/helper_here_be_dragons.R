@@ -127,7 +127,7 @@ opt_affine_model <- function(rstan_data, init_vec = NULL, run_no,
 fit_mix_model <- function(est_data){ #Pass in only the columns with parameter values
   cluster_1 <- est_data %>%
     filter(beta_0 <= mean(est_data$beta_0))
-  cluster_2 <- par_est_data %>%
+  cluster_2 <- est_data %>%
     filter(beta_0 > mean(est_data$beta_0))
 
   mu <- list( #Means from true parameters and extreme estimates

@@ -268,7 +268,7 @@ for(i in 1:runs){ #RK4
   
   indep_err_numeric_par_est_tibble <- rbind(indep_err_numeric_par_est_tibble, temp)
 } 
-saveRDS(indep_err_numeric_par_est_tibble, file = "output/analytic_par_est_tibble.rds")
+saveRDS(indep_err_numeric_par_est_tibble, file = "output/indep_err_numeric_par_est_tibble.rds")
 ```
 
 ### Testing different priors
@@ -477,13 +477,12 @@ true_pars_diff <- list(
 )
 
 y_true_diff <- analytic_solution(time, true_pars_diff)
-y_obs_diff <- round(y_true_diff + rnorm(length(y_true_diff), 0, 0.1), digits = 1)
 
 #Observed data frame
 obs_diff_data_frame <- tibble(
   time = time,
-  y_obs = y_obs_diff,
-  obs_index = 1:length(y_obs_diff)
+  y_obs = y_true_diff,
+  obs_index = 1:length(y_true_diff)
 )
 
 runs <- 10000
@@ -495,6 +494,12 @@ diff_par_est_tibble <- tibble(run = c(),
 
 for(i in 1:runs){
   print(paste0("Fit ", i))
+  #Independent error
+  obs_diff_data_frame$y_obs <- round((y_true_diff +
+                               rnorm(length(y_true_diff),
+                                     0, 0.1)),
+                            digits = 1)
+  
   temp <- fit_affine_model(run_no = i, 
                    step_size = step_size, 
                    obs_diff_data_frame,
@@ -630,10 +635,72 @@ for(i in 1:runs){
   
   canham_par_est_tibble <- rbind(canham_par_est_tibble, temp)
 } 
+saveRDS(canham_par_est_tibble, file = "output/canham_par_est_tibble.rds")
 ```
 
 ## Analysis
+```{r}
+source("R/helper_here_be_dragons.R")
+```
 The general workflow for each model is the same: fit a finite mixture model to identify clustering, get an estimate of the distance between clusters, then plot the posterior distribution clusters. Additional plots may be produced depending on which model is being tested.
+
+
+### Different step sizes
+We are going to fit a finite mixture model for each of the step sizes to tell us about the clustering in the posterior distributions. We assume that there are two clusters (you can check with scatter plots), that one is close to the true values and the other some distance away with much larger estimates for both, and use the mean for rows where $\hat{\beta_}_0 > mean(\hat{\beta_}_0)$ as our starting value for the iterative process to avoid singularities. The overall mean of the estimates works as a threshold for extreme values because of the bimodality and distance between clusters.
+
+```{r}
+step_size_mix_models <- list()
+step_size_mix_models_par_ests <- tibble(
+  step_size = c(),
+  good_beta_0 = c(),
+  good_beta_1 = c(),
+  error_beta_0 = c(),
+  error_beta_1 = c(),
+  m_dist_c1 = c(),
+  m_dist_c2 = c(),
+  dist = c(),
+  error_fraction = c()
+)
+
+m_dist_centre <- c(9.948498, 0.9909082)
+
+par_est_tibble <- readRDS("output/par_est_tibble.rds")
+
+for(i in 1:length(unique(par_est_tibble$step_size))){
+  #Get data for single step size
+  step_size_selected <- unique(par_est_tibble$step_size)[i]
+  
+  analysis_data <- par_est_tibble %>%
+    filter(step_size == step_size_selected)
+  
+  #Fit multivariate normal finite mixture model to the estimates
+  step_size_mix_models[[i]] <- fit_mix_model(analysis_data[,c(3,4)])
+  
+  dist_vec <- calculate_cluster_distances(step_size_mix_models[[i]],
+                                          m_dist_centre)
+  
+  #Extract values
+  step_size_mix_models_par_ests_temp <- tibble(
+    step_size = step_size_selected,
+    good_beta_0 = step_size_mix_models[[i]]$mu[[1]][1],
+    good_beta_1 = step_size_mix_models[[i]]$mu[[1]][2],
+    error_beta_0 = step_size_mix_models[[i]]$mu[[2]][1],
+    error_beta_1 = step_size_mix_models[[i]]$mu[[2]][2],
+    m_dist_c1 = dist_vec[["m_dist_c1"]],
+    m_dist_c2 = dist_vec[["m_dist_c2"]],
+    euclid_dist = dist_vec[["cluster_euclid_dist"]],
+    error_prob = step_size_mix_models[[i]]$lambda[2]
+  )
+  
+  step_size_mix_models_par_ests <- rbind(step_size_mix_models_par_ests, 
+                                         step_size_mix_models_par_ests_temp)
+}
+
+#Have a look at the estimates
+step_size_mix_models_par_ests_rounded <- signif(step_size_mix_models_par_ests, digits = 4)
+write.csv(step_size_mix_models_par_ests_rounded, "output/step_size_mix_models_par_ests_rounded.csv")
+```
+We get bimodality in the posterior distributions, for all it's rarer for the smaller step sizes. Bias in the estimates closest to the true values is due to the same measurement error in the 'observed' data for all the fits. The second mode in the estimates arises from the numerical integration error as we will verify shortly. The extreme bimodality of the posterior is consistent behaviour, even though the point of the second mode shifts based on the step size.
 
 Some aesthetics for plots.
 ```{r}
@@ -687,69 +754,6 @@ legend_spec_with_true$fancy_name[4] <-
          ",\n Beta_1 = ",
          beta_1)
 ```
-
-### Different step sizes
-We are going to fit a finite mixture model for each of the step sizes to tell us about the clustering in the posterior distributions. We assume that there are two clusters (you can check with scatter plots), that one is close to the true values and the other some distance away with much larger estimates for both, and use the mean for rows where $\hat{\beta_}_0 > mean(\hat{\beta_}_0)$ as our starting value for the iterative process to avoid singularities. The overall mean of the estimates works as a threshold for extreme values because of the bimodality and distance between clusters.
-
-```{r}
-step_size_mix_models <- list()
-step_size_mix_models_par_ests <- tibble(
-  step_size = c(),
-  good_beta_0 = c(),
-  good_beta_1 = c(),
-  error_beta_0 = c(),
-  error_beta_1 = c(),
-  m_dist_c1 = c(),
-  m_dist_c2 = c(),
-  dist = c(),
-  error_fraction = c()
-)
-
-m_dist_centre <- c(9.946, 0.991)
-
-for(i in 1:length(unique(par_est_tibble$step_size))){
-  #Get data for single step size
-  step_size_selected <- unique(par_est_tibble$step_size)[i]
-  
-  analysis_data <- par_est_tibble %>%
-    filter(step_size == step_size_selected)
-  
-  #Fit multivariate normal finite mixture model to the estimates
-  step_size_mix_models[[i]] <- fit_mix_model(analysis_data[,c(3,4)])
-  
-  dist_table <- tibble( #Data to calculate distance
-    b_0 = c(step_size_mix_models[[i]]$mu[[2]][1], 
-            step_size_mix_models[[i]]$mu[[1]][1]),
-    b_1 = c(step_size_mix_models[[i]]$mu[[2]][2], 
-            step_size_mix_models[[i]]$mu[[1]][2])
-  )
-  
-  #Extract values
-  step_size_mix_models_par_ests_temp <- tibble(
-    step_size = step_size_selected,
-    good_beta_0 = step_size_mix_models[[i]]$mu[[1]][1],
-    good_beta_1 = step_size_mix_models[[i]]$mu[[1]][2],
-    error_beta_0 = step_size_mix_models[[i]]$mu[[2]][1],
-    error_beta_1 = step_size_mix_models[[i]]$mu[[2]][2],
-    m_dist_c1 = mahalanobis(step_size_mix_models[[i]]$mu[[1]], 
-                            center = m_dist_centre, 
-                            cov = step_size_mix_models[[i]]$sigma[[1]]),
-    m_dist_c2 = mahalanobis(step_size_mix_models[[i]]$mu[[2]], 
-                            center = m_dist_centre, 
-                            cov = step_size_mix_models[[i]]$sigma[[2]]),
-    euclid_dist = dist(dist_table),
-    error_prob = step_size_mix_models[[i]]$lambda[2]
-  )
-  
-  step_size_mix_models_par_ests <- rbind(step_size_mix_models_par_ests, 
-                                         step_size_mix_models_par_ests_temp)
-}
-
-#Have a look at the estimates
-step_size_mix_models_par_ests
-write.csv(step_size_mix_models_par_ests, "output/step_size_mix_models_par_ests.csv")
-```
-We get bimodality in the posterior distributions, for all it's rarer for the smaller step sizes. Bias in the estimates closest to the true values is due to the same measurement error in the 'observed' data for all the fits. The second mode in the estimates arises from the numerical integration error as we will verify shortly. The extreme bimodality of the posterior is consistent behaviour, even though the point of the second mode shifts based on the step size.
 
 We use scatter plots of the clusters for qualitative analysis. As the clusters are so distant from each other, and so tight around their means, we separate them out for plots. The mixture models gives a classification of each point in the data that we use to filter observations. As the clusters are so distant we can use other heuristics such as $\hat{\beta_}_0 > 2\beta_0$ which agree perfectly with the cluster analysis.
 
@@ -937,7 +941,7 @@ rk4_step <- function(y, pars, interval, DE){
 
 The behaviour of the sub-step values is of interest to us. Because the affine DE is negative for $Y(t) > \beta_0/\beta_1$, we can actually get sub-steps that oscillate back and forth, with both positive and negative increments. Here we will plot that for the erroneous parameters that arise at step size 0.5.
 ```{r}
-pars <- c(49.4, 4.94)
+pars <- c(49.3, 4.91)
 step_size <- 0.5
 steps <- 18
 y_0 <- 1
@@ -1358,6 +1362,7 @@ est_scatter
 We're going to take a look at the RK45 method parameter estimates.
 ```{r}
 m_dist_centre <- c(9.946, 0.991)
+rk45_par_est_tibble <- readRDS("output/rk45_par_est_tibble.rds")
 
 rk45_hist_0 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
@@ -1374,27 +1379,13 @@ rk45_hist_1 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_1)) +
 #Fit multivariate normal finite mixture model to the estimates
 rk45_mix_models <- fit_mix_model(rk45_par_est_tibble[,c(3,4)])
 
-print("Cluster 1 M. dist")
-mahalanobis(rk45_mix_models$mu[[1]],
-            center = m_dist_centre,
-            cov = rk45_mix_models$sigma[[1]])
-print("Cluster 2 M. dist")
-mahalanobis(rk45_mix_models$mu[[2]],
-            center = m_dist_centre,
-            cov = rk45_mix_models$sigma[[2]])
-
-dist_table <- tibble( #Data to calculate Euclidean distance
-    b_0 = c(rk45_mix_models$mu[[2]][1], 
-            rk45_mix_models$mu[[1]][1]),
-    b_1 = c(rk45_mix_models$mu[[2]][2], 
-            rk45_mix_models$mu[[1]][2])
-  )
-print("Euclidean dist")
-dist(dist_table)
+calculate_cluster_distances(rk45_mix_models, m_dist_centre)
 ```
 
 ### Analytic solution analysis
 ```{r}
+analytic_par_est_tibble <- readRDS("output/analytic_par_est_tibble.rds")
+
 mix_model_analytic_scatter <- ggplot(data = analytic_par_est_tibble,
      aes(x = beta_0, y = beta_1)) +
   geom_point(colour = "darkorchid", 
@@ -1417,24 +1408,22 @@ analytic_hist_1 <- ggplot(data = analytic_par_est_tibble, aes(x=beta_1)) +
   labs(x = "beta_1 estimates") +
   theme_classic()
 
+mean(analytic_par_est_tibble$beta_0)
+mean(analytic_par_est_tibble$beta_1)
+
 #Fit multivariate normal finite mixture model to the estimates
-mix_model_analytic <- fit_mix_model(x = analytic_par_est_tibble[,c(3,4)])
+mix_model_analytic <- fit_mix_model(analytic_par_est_tibble[,c(3,4)])
 summary(mix_model_analytic)
 print(mix_model_analytic$lambda)
 
-dist_table <- tibble( #Data to calculate distance
-  b_0 = c(mix_model_analytic$mu[[2]][1], 
-          mix_model_analytic$mu[[1]][1]),
-  b_1 = c(mix_model_analytic$mu[[2]][2], 
-          mix_model_analytic$mu[[1]][2])
-)
-print(dist(dist_table))
+calculate_cluster_distances(mix_model_analytic, c(mean(analytic_par_est_tibble$beta_0), 
+                                                  mean(analytic_par_est_tibble$beta_1)))
 ```
 
 ### Alternate prior analysis
 For each combination of priors we run a mixture model to get probability estimates.
 ```{r}
-m_dist_centre <- c(9.946, 0.991)
+m_dist_centre <- c(9.948498, 0.9909082)
 
 beta_prior_testing <- list(
   cluster_1_test = list(
@@ -1491,6 +1480,8 @@ prior_test_dist_table <- tibble(
   cluster_euclid_dist = c(),
 )
 
+prior_test_est_tibble_list <- readRDS("output/prior_test_est_tibble_list.rds")
+
 for(i in 1:length(beta_prior_testing)){
   print(beta_prior_testing[[i]]$name) 
   prior_test_est_tibble <- prior_test_est_tibble_list[[i]]
@@ -1528,13 +1519,6 @@ for(i in 1:length(beta_prior_testing)){
                                 beta_prior_testing[[i]]$prior_pars_ind_beta_1[1], 
                                 beta_prior_testing[[i]]$prior_pars_ind_beta_1[2])
   
-  dist_table <- tibble( #Data to calculate distance
-    b_0 = c(mix_model_prior_list[[i]]$mu[[2]][1], 
-            mix_model_prior_list[[i]]$mu[[1]][1]),
-    b_1 = c(mix_model_prior_list[[i]]$mu[[2]][2], 
-            mix_model_prior_list[[i]]$mu[[1]][2])
-  )
-  
   dens_prior_temp <- tibble(prior = beta_prior_testing[[i]]$name,
                             cluster_1_beta_0 = mix_model_prior_list[[i]]$mu[[1]][1],
                             cluster_1_beta_1 = mix_model_prior_list[[i]]$mu[[1]][2],
@@ -1546,15 +1530,13 @@ for(i in 1:length(beta_prior_testing)){
                             cluster_2_post_prob = mix_model_prior_list[[i]]$lambda[2]
                             )
   
+  dist_vec <- calculate_cluster_distances(mix_model_prior_list[[i]], m_dist_centre)
+  
   prior_test_dist_table_temp <- tibble(
     prior = c(),
-    m_dist_c1 = mahalanobis(mix_model_prior_list[[i]]$mu[[1]], 
-                            center = m_dist_centre, 
-                            cov = mix_model_prior_list[[i]]$sigma[[1]]),
-    m_dist_c2 = mahalanobis(mix_model_prior_list[[i]]$mu[[2]], 
-                            center = m_dist_centre, 
-                            cov = mix_model_prior_list[[i]]$sigma[[2]]),
-    cluster_euclid_dist = dist(dist_table)
+    m_dist_c1 = dist_vec[["m_dist_c1"]],
+    m_dist_c2 = dist_vec[["m_dist_c2"]],
+    cluster_euclid_dist = dist_vec[["cluster_euclid_dist"]]
   )
   
   prior_test_dist_table <- rbind(prior_test_dist_table, prior_test_dist_table_temp)
@@ -1586,49 +1568,57 @@ write.csv(prior_test_dist_table_rounded, file = "output/prior_test_dist_table_ro
 ### Independent errors
 We check that the independent error fits with the analytic solution produced a (minimally biased) unbiased estimate of the parameters. We get more variance in the estimates, but they are centred at the correct values.
 ```{r}
+indep_err_analytic_par_est_tibble <- readRDS("output/indep_err_analytic_par_est_tibble.rds")
+indep_err_numeric_par_est_tibble <- readRDS("output/indep_err_numeric_par_est_tibble.rds")
+
 pars_combo <- c(beta_0, beta_1)
 m_dist_centre <- c(beta_0, beta_1)
 
-indep_error_hist_0 <- ggplot(data = indep_err_par_est_tibble, 
+indep_error_hist_0 <- ggplot(data = indep_err_analytic_par_est_tibble, 
                              aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
                  colour = "black") +
   labs(x = "beta_0 estimates",
        title = "Parameter histograms from independent errors") +
   theme_classic()
-indep_error_hist_1 <- ggplot(data = indep_err_par_est_tibble, 
+indep_error_hist_1 <- ggplot(data = indep_err_analytic_par_est_tibble, 
                              aes(x=beta_1)) +
   geom_histogram(fill = "lightgreen",
                  colour = "black") +
   labs(x = "beta_1 estimates") +
   theme_classic()
 
-#Fit multivariate normal finite mixture model to the estimates
-analytic_indep_mix_models <- fit_mix_model(indep_err_par_est_tibble[,c(3,4)])
+#Fit multivariate normal finite mixture model to the estimates, typically fails to converge
+analytic_indep_mix_models <- fit_mix_model(indep_err_analytic_par_est_tibble[,c(3,4)])
 
-summary(analytic_indep_mix_models)
+analytic_indep_beta_0 <- mean(indep_err_analytic_par_est_tibble$beta_0)
+analytic_indep_beta_1 <- mean(indep_err_analytic_par_est_tibble$beta_1)
 
-indep_error_post_par_table <- tibble(
+mahalanobis(c(analytic_indep_beta_0, analytic_indep_beta_1),
+              center = m_dist_centre,
+              cov = cov(indep_err_analytic_par_est_tibble[,3:4]))
+
+indep_error_analytic_post_par_table <- tibble(
   par_name = c("$\beta_0$", "$\beta_1$"),
   error = "Indep",
   int = "Analytic",
   par_true = pars_combo,
   par_mean = c(
-    mean(indep_err_par_est_tibble$beta_0),
-    mean(indep_err_par_est_tibble$beta_1)
+    mean(indep_err_analytic_par_est_tibble$beta_0),
+    mean(indep_err_analytic_par_est_tibble$beta_1)
   ),
   ci_lower = c(
-    as.numeric(quantile(indep_err_par_est_tibble$beta_0, probs = 0.025)),
-    as.numeric(quantile(indep_err_par_est_tibble$beta_1, probs = 0.025))
+    as.numeric(quantile(indep_err_analytic_par_est_tibble$beta_0, probs = 0.025)),
+    as.numeric(quantile(indep_err_analytic_par_est_tibble$beta_1, probs = 0.025))
   ),
   ci_upper = c(
-    as.numeric(quantile(indep_err_par_est_tibble$beta_0, probs = 0.975)),
-    as.numeric(quantile(indep_err_par_est_tibble$beta_1, probs = 0.975))
+    as.numeric(quantile(indep_err_analytic_par_est_tibble$beta_0, probs = 0.975)),
+    as.numeric(quantile(indep_err_analytic_par_est_tibble$beta_1, probs = 0.975))
   )
 )
 
 #Get mean and CIs
-same_error_post_par_table <- tibble(
+same_error_analytic_post_par_table <- tibble(
   par_name = c("$\beta_0$", "$\beta_1$"),
   error = "Same obs.",
   int = "Analytic",
@@ -1674,6 +1664,7 @@ same_error_rk4_post_par_table <- tibble(
 numeric_indep_mix_models <- fit_mix_model(indep_err_numeric_par_est_tibble[,c(3,4)])
 
 summary(numeric_indep_mix_models)
+calculate_cluster_distances(numeric_indep_mix_models, m_dist_centre)
 
 par_est_tibble_0_5_indep <- indep_err_numeric_par_est_tibble %>% #Filter out other step sizes and bad mode
   filter(beta_0 < 20)
@@ -1696,18 +1687,28 @@ indep_error_rk4_post_par_table <- tibble(
   )
 )
 
-bias_analysis_table <- rbind(indep_error_post_par_table,
+bias_analysis_table <- rbind(indep_error_analytic_post_par_table,
       indep_error_rk4_post_par_table,
-      same_error_post_par_table,
+      same_error_analytic_post_par_table,
       same_error_rk4_post_par_table
       ) %>%
   arrange(par_name, error)
 
 bias_analysis_table
+
+bias_analysis_table_rounded <- bias_analysis_table
+bias_analysis_table_rounded[,5:7] <- signif(bias_analysis_table[,5:7], digits = 4)
+
+write.csv(bias_analysis_table_rounded, file = "output/bias_analysis_table_rounded.csv")
 ```
 
 ### Alternate parameters
 ```{r}
+beta_0_diff <- 8
+beta_1_diff <- 1.2
+
+diff_par_est_tibble <- readRDS("output/diff_par_est_tibble.rds")
+
 diff_par_hist_0 <- ggplot(data = diff_par_est_tibble, 
                              aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
@@ -1731,6 +1732,7 @@ ggplot(data = diff_par_est_tibble,
 
 #Fit mixture model
 diff_par_mix_models <- fit_mix_model(diff_par_est_tibble[,c(3,4)])
+calculate_cluster_distances(diff_par_mix_models, c(beta_0_diff, beta_1_diff))
 
 summary(diff_par_mix_models)
 
@@ -1738,14 +1740,6 @@ plot(diff_par_mix_models,
      whichplots = 2,
      xlab2 = "Beta 0",
      ylab2 = "Beta 1")
-
-dist_table <- tibble( #Data to calculate distance
-    b_0 = c(diff_par_mix_models$mu[[2]][1], 
-            diff_par_mix_models$mu[[1]][1]),
-    b_1 = c(diff_par_mix_models$mu[[2]][2], 
-            diff_par_mix_models$mu[[1]][2])
-  )
-dist(dist_table)
 
 diff_par_mix_models$mu[[2]][1]/diff_par_mix_models$mu[[2]][2]
 diff_par_mix_models$mu[[1]][1]/diff_par_mix_models$mu[[1]][2]
@@ -1767,11 +1761,6 @@ for(i in 1:length(optimizing_tests)){ #Plots
     mutate(converge = (return == 0),
            colour = legend_spec$colours[1],
            shape = 20)
-  
-  #sqrt_det_vec <- c()
-  #for(j in 1:nrow(est_tibble)){
-  #  sqrt_det_vec[j] <- sqrt(det(data[[2]][[j]]))
-  #}
   
   print(paste0("Convergence prop: ", sum(est_tibble$converge)/nrow(est_tibble)))
   
@@ -1824,6 +1813,8 @@ for(i in 1:length(optimizing_tests)){ #Plots
 ### Canham testing
 Lucky for us, there is no evidence of secondary posterior clusters in the Canham estimates.
 ```{r}
+canham_par_est_tibble <- readRDS("output/canham_par_est_tibble.rds")
+
 pars_combo <- c(g_max = 0.8,
                 y_max = 8,
                 k = 1)
@@ -2020,6 +2011,7 @@ plot_grid(
   rk45_hist_1,
   analytic_hist_0,
   analytic_hist_1,
+  align = "v",
   ncol = 1,
   labels = lab_vec_4
 )
@@ -2042,20 +2034,6 @@ upper_plot <- plot_grid(
   nrow = 1,
   labels = lab_vec_5[1:2]
 )
-scatter_plot <- plot_grid(
-  canham_scatter_list[[1]],
-  canham_scatter_list[[2]],
-  canham_scatter_list[[3]],
-  nrow = 1,
-  labels = lab_vec_5[3:5]
-)
-hist_plot <- plot_grid(
-  canham_hist_1,
-  canham_hist_2,
-  canham_hist_3,
-  nrow = 1,
-  labels = lab_vec_5[3:5]
-)
 scatter_hist <- plot_grid(
   canham_hist_1,
   canham_hist_2,
@@ -2067,13 +2045,6 @@ scatter_hist <- plot_grid(
   labels = lab_vec_8[3:8],
   align = "v"
 )
-
-plot_grid(upper_plot,
-          scatter_plot,
-          nrow = 2)
-plot_grid(upper_plot,
-          hist_plot,
-          nrow = 2)
 plot_grid(upper_plot, #Dims: 750,850 
           scatter_hist,
           nrow = 2,
@@ -2082,4 +2053,4 @@ plot_grid(upper_plot, #Dims: 750,850
 ```
 
 # Where to from here?
-For the purpose of the hmde package that this vignette is a part of, we account for the pathologies in this particular model by using the analytic solution for the von Bertalanffy equation. More work needs to be done to understand the interaction between numerical methods and MCMC sampling. What we have demonstrated is that the problem exists, and it is not enough to have numerical stability at the true parameter values because MCMC estimation moves around, you need numerical stability in a potentially quite large part of the parameter space. The good news is that simulated data and posterior plots with more accurate numerical methods can at least identify that something is going wrong.
+For the purpose of the hmde package, we account for the pathologies in this particular model by using the analytic solution for the von Bertalanffy equation. More work needs to be done to understand the interaction between numerical methods longitudinal models. What we have demonstrated is that the problem exists, and it is not enough to have numerical stability at the true parameter values because MCMC estimation moves around, you need numerical stability in a potentially quite large part of the parameter space. The good news is that simulated data and posterior plots with more accurate numerical methods can at least identify that something is going wrong.
