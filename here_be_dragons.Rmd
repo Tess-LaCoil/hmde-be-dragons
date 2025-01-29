@@ -1361,8 +1361,9 @@ est_scatter
 ### RK45 analysis
 We're going to take a look at the RK45 method parameter estimates.
 ```{r}
-m_dist_centre <- c(9.946, 0.991)
+m_dist_centre <- c(9.948498, 0.9909082)
 rk45_par_est_tibble <- readRDS("output/rk45_par_est_tibble.rds")
+rk45_par_est_tibble_old <- readRDS("output/rk45_par_est_tibble_old.rds")
 
 rk45_hist_0 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
@@ -1376,10 +1377,27 @@ rk45_hist_1 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_1)) +
   labs(x = "beta_1 estimates") +
   theme_classic()
 
+rk45_hist_old_0 <- ggplot(data = rk45_par_est_tibble_old, aes(x=beta_0)) +
+  geom_histogram(fill = "lightblue",
+                 colour = "black") +
+  labs(x = "beta_0 estimates",
+       title = "Parameter histograms from RK45 with log-normal beta_c") +
+  theme_classic()
+rk45_hist_old_1 <- ggplot(data = rk45_par_est_tibble_old, aes(x=beta_1)) +
+  geom_histogram(fill = "lightgreen",
+                 colour = "black") +
+  labs(x = "beta_1 estimates") +
+  theme_classic()
+
 #Fit multivariate normal finite mixture model to the estimates
 rk45_mix_models <- fit_mix_model(rk45_par_est_tibble[,c(3,4)])
-
+summary(rk45_mix_models)
 calculate_cluster_distances(rk45_mix_models, m_dist_centre)
+
+#Fit multivariate normal finite mixture model to the estimates
+rk45_mix_models_old <- fit_mix_model(rk45_par_est_tibble_old[,c(3,4)])
+summary(rk45_mix_models_old)
+calculate_cluster_distances(rk45_mix_models_old, m_dist_centre)
 ```
 
 ### Analytic solution analysis
@@ -2006,14 +2024,47 @@ plot_grid(
 
 
 #RK45 and analytic solution
+beta_0_lims <- c(min(c(
+      rk45_par_est_tibble$beta_0,
+       analytic_par_est_tibble$beta_0
+     )), max(c(
+       rk45_par_est_tibble$beta_0,
+       analytic_par_est_tibble$beta_0
+)))
+beta_1_lims <- c(min(c(
+      rk45_par_est_tibble$beta_1,
+       analytic_par_est_tibble$beta_1
+     )), max(c(
+       rk45_par_est_tibble$beta_1,
+       analytic_par_est_tibble$beta_1
+)))
+
+rk45_hist_0_xlim <- rk45_hist_0 +
+  xlim(beta_0_lims)
+rk45_hist_1_xlim <- rk45_hist_1 + 
+  xlim(beta_1_lims)
+analytic_hist_0_xlim <- analytic_hist_0 +
+  xlim(beta_0_lims)
+analytic_hist_1_xlim <- analytic_hist_1 + 
+  xlim(beta_1_lims)
+
 plot_grid(
-  rk45_hist_0,
-  rk45_hist_1,
-  analytic_hist_0,
-  analytic_hist_1,
-  align = "v",
-  ncol = 1,
+  rk45_hist_0_xlim,
+  rk45_hist_1_xlim,
+  analytic_hist_0_xlim,
+  analytic_hist_1_xlim,
+  align = "vh",
+  ncol = 2,
   labels = lab_vec_4
+)
+
+#Old data with log-normal prior
+plot_grid(
+  rk45_hist_old_0,
+  rk45_hist_old_1,
+  nrow = 1,
+  align = "vh",
+  labels = lab_vec_4[1:2]
 )
 
 #Optimizing tests
