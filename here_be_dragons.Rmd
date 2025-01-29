@@ -296,6 +296,31 @@ for(i in 1:runs){ #RK4
 saveRDS(indep_err_numeric_par_est_tibble, file = "output/indep_err_numeric_par_est_tibble.rds")
 ```
 
+### Better measurement is not a solution
+```{r}
+runs <- 10000
+indep_small_error_par_est_tibble <- tibble(run = c(),
+                         step_size = c(),
+                         beta_0 = c(),
+                         beta_1 = c())
+for(i in 1:runs){ #RK4
+  temp_obs <- obs_data_frame %>%
+  mutate(
+      y_obs = (y_true + rnorm(length(y_true), 0, 0.001))
+    )
+  
+  temp <- fit_affine_model(run_no = i, 
+                     step_size = 0.5, 
+                     temp_obs,
+                     int_method = 1)
+  
+  temp$step_size[1] <- "0.5"
+  
+  indep_small_error_par_est_tibble <- rbind(indep_small_error_par_est_tibble, temp)
+} 
+saveRDS(indep_small_error_par_est_tibble, file = "output/indep_small_error_par_est_tibble.rds")
+```
+
 ### Testing different priors
 As the default priors for the $\beta$ parameters are closer to the true parameter combination than any of the erroneous clusters we did follow-up testing to check if, and how much, this might bias the probability of a chain falling into the second mode in the posterior distribution. The Stan code for the affine model is set up to have a default pair of prior means at $\log(1) = 0$, but user-defined values can be passed as part of the data structure. We do this for the 0.5 step size only.
 
@@ -1743,6 +1768,38 @@ bias_analysis_table_rounded <- bias_analysis_table
 bias_analysis_table_rounded[,5:7] <- signif(bias_analysis_table[,5:7], digits = 4)
 
 write.csv(bias_analysis_table_rounded, file = "output/bias_analysis_table_rounded.csv")
+```
+
+### Small error
+```{r}
+pars_combo <- c(beta_0, beta_1)
+
+indep_small_error_par_est_tibble <- readRDS("output/indep_small_error_par_est_tibble.rds")
+numeric_indep_mix_models <- fit_mix_model(indep_small_error_par_est_tibble[,c(3,4)])
+
+summary(numeric_indep_mix_models)
+calculate_cluster_distances(numeric_indep_mix_models, pars_combo)
+
+good_est <- indep_small_error_par_est_tibble[numeric_indep_mix_models$posterior[,1],]
+
+indep_small_error_rk4_post_par_table <- tibble(
+  par_name = c("$\beta_0$", "$\beta_1$"),
+  error = "Indep, small error",
+  int = "RK4",
+  par_true = pars_combo,
+  par_mean = c(
+    mean(good_est$beta_0),
+    mean(good_est$beta_1)
+  ),
+  ci_lower = c(
+    as.numeric(quantile(good_est$beta_0, probs = 0.025)),
+    as.numeric(quantile(good_est$beta_1, probs = 0.025))
+  ),
+  ci_upper = c(
+    as.numeric(quantile(good_est$beta_0, probs = 0.975)),
+    as.numeric(quantile(good_est$beta_1, probs = 0.975))
+  )
+)
 ```
 
 ### Alternate parameters
