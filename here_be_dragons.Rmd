@@ -195,6 +195,31 @@ for(i in 1:runs){
 saveRDS(rk45_par_est_tibble, file = "output/rk45_par_est_tibble.rds")
 ```
 
+With the default prior distributions RK45 gives a unimodal posterior, however in testing we discovered that if $\beta_c$ instead has a log-normal prior (very common specification) a bimodal posterior can arise. The following code uses that prior specification.
+
+```{r, eval = FALSE}
+runs <- 10000
+rk45_par_est_tibble_old <- tibble(run = c(),
+                         step_size = c(),
+                         beta_0 = c(),
+                         beta_1 = c())
+
+affine_model_old <- stan_model(file = "stan/affine_single_ind_logN_beta_c.stan")
+
+for(i in 1:runs){
+  temp <- fit_old_affine_model(run_no = i, 
+                       step_size = 1, 
+                       obs_data_frame,
+                       int_method = 2,
+                       affine_model = affine_model_old)
+  
+  temp$step_size[1] <- "Adaptive"
+  
+  rk45_par_est_tibble_old <- rbind(rk45_par_est_tibble_old, temp)
+} 
+saveRDS(rk45_par_est_tibble_old, file = "output/rk45_par_est_tibble_old.rds")
+```
+
 ### Analytic solution
 To check the bias on the observed data and for any other posterior pathologies we use the analytic solution to get estimates.
 ```{r}
@@ -363,7 +388,7 @@ for(i in 1:10000){
     print(paste0("Run: ", i))
   }
   
-  temp <- opt_affine_model(rstan_data, run_no = i)
+  temp <- opt_affine_model(rstan_data, run_no = i, affine_model)
   
   rk4_random_post_est <- rbind(rk4_random_post_est, temp$est_tibble_temp)
   rk4_random_hessian[[i]] <- temp$hessian
