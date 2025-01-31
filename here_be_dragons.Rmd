@@ -991,7 +991,7 @@ rk4_step <- function(y, pars, interval, DE){
 
 The behaviour of the sub-step values is of interest to us. Because the affine DE is negative for $Y(t) > \beta_0/\beta_1$, we can actually get sub-steps that oscillate back and forth, with both positive and negative increments. Here we will plot that for the erroneous parameters that arise at step size 0.5.
 ```{r}
-pars <- c(49.3, 4.91)
+pars <- c(49.26, 4.913)
 step_size <- 0.5
 steps <- 18
 y_0 <- 1
