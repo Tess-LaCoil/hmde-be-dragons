@@ -361,12 +361,17 @@ beta_prior_testing <- list(
     name = "Silly small SD",
     prior_pars_ind_const = c(1,0.001),
     prior_pars_ind_beta_1 = c(0,0.001)
+  ),
+  large_sd_test = list(
+    name = "Large SD",
+    prior_pars_ind_const = c(1,10),
+    prior_pars_ind_beta_1 = c(0,10)
   )
 )
 
 prior_test_est_tibble_list <- list()
 
-for(j in 1:length(beta_prior_testing)){
+for(j in 6:length(beta_prior_testing)){
   prior_test_est_tibble <- tibble(run = c(),
                                 step_size = c(),
                                 beta_0 = c(),
@@ -1524,6 +1529,11 @@ beta_prior_testing <- list(
     name = "Silly small SD",
     prior_pars_ind_const = c(1,0.001),
     prior_pars_ind_beta_1 = c(0,0.001)
+  ),
+  large_sd_test = list(
+    name = "Large SD",
+    prior_pars_ind_const = c(1,10),
+    prior_pars_ind_beta_1 = c(0,10)
   )
 )
 
