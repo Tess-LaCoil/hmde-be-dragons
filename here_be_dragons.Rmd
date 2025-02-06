@@ -972,7 +972,8 @@ First we generate the numerical and analytic solution data.
 ```{r}
 yini  <- c(Y = true_y_0) #Initial condition
 y_over_time <- tibble(model="True Sizes",
-                      y_analytic = y_true,
+                      y_analytic_est_pars = y_true,
+                      y_analytic_true_pars = y_true,
                       y_numeric = y_true,
                       time = 0:max_time,
                       beta_0_par = beta_0,
@@ -985,14 +986,17 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
                     beta_1 = step_size_mix_models_par_ests$error_beta_1[i])
   times <- seq(0, max_time, by = step_size_mix_models_par_ests$step_size[i])
   
-  solution_pars <- c(pars_combo, true_y_0)
-  y_true_temp <- analytic_solution(times, solution_pars)
+  est_pars <- c(pars_combo, true_y_0)
+  y_true_temp <- analytic_solution(times, est_pars)
+  true_pars <- c(c(beta_0 = 10, beta_1 = 1), true_y_0)
+  y_true_10_0 <- analytic_solution(times, true_pars)
     
   numerical_output <- ode(yini, times, DE, pars_combo, method = "rk4")
   
   y_over_time_temp <- tibble(
     model = step_size_mix_models_par_ests$step_size[i],
-    y_analytic = y_true_temp,
+    y_analytic_est_pars = y_true_temp,
+    y_analytic_true_pars = y_true_10_0,
     y_numeric = numerical_output[,2],
     time = times,
     beta_0_par = step_size_mix_models_par_ests$error_beta_0[i],
@@ -1001,6 +1005,13 @@ for(i in 1:nrow(step_size_mix_models_par_ests)){
   
   y_over_time <- rbind(y_over_time, y_over_time_temp)
 }
+
+step_size_rmse_tibble <- y_over_time %>%
+  group_by(model) %>%
+  mutate(all_steps_numeric_vs_true = y_numeric - y_analytic_true_pars,
+         all_steps_numeric_vs_est = y_numeric - y_analytic_est_pars) %>%
+  summarise(true_par_rmse = sqrt(sum(all_steps_numeric_vs_true^2)/ n()), 
+            est_par_rmse = sqrt(sum(all_steps_numeric_vs_est^2)/ n()))
 ```
 
 Here is a figure that shows all of the estimated sizes over time for the bad parameter combinations across different step sizes, compared to the true values.
@@ -1044,7 +1055,8 @@ rk4_step <- function(y, pars, interval, DE){
   
   y_hat <- y + (1.0/6.0) * (k1 + 2.0*k2 + 2.0*k3 + k4) * interval
   
-  intermediate_step <- c(y+interval*k1/2.0, 
+  intermediate_step <- c(y,
+                         y+interval*k1/2.0, 
                          y+interval*k2/2.0, 
                          y+interval*k3)
   k_vals <- c(k1, k2, k3, k4)
@@ -1061,13 +1073,13 @@ The behaviour of the sub-step values is of interest to us. Because the affine DE
 ```{r}
 pars <- c(49.26, 4.913)
 step_size <- 0.5
-steps <- 18
+steps <- 9
 y_0 <- 1
 y_est <- tibble(
-  y_hat = y_0,
-  source = "Est. Y(t_j)",
-  k_vals = NA,
-  step = 0
+  y_hat = c(),
+  source = c(),
+  k_vals = c(),
+  step = c()
 )
 
 y_start <- y_0
@@ -1075,9 +1087,9 @@ for(i in 1:steps){
   numeric_sol <- rk4_step(y_start, pars,  step_size, example_DE)
   
   y_est_temp <- tibble(
-    y_hat = c(numeric_sol$intermediate_step, numeric_sol$y_hat),
-    source = c(rep("RK4 weights k_j", times = 3), "Est. Y(t_j)"),
-    k_vals = c(numeric_sol$k_vals),
+    y_hat = numeric_sol$intermediate_step,
+    source = "RK4",
+    k_vals = numeric_sol$k_vals,
     step = i
   )
   
@@ -1086,63 +1098,54 @@ for(i in 1:steps){
 }
 
 y_est$index <- 1:nrow(y_est)
+y_est <- y_est %>%
+  mutate(time = (index-1) *(step_size/4))
 
-plot_data_first_step <- y_est %>%
-  filter(source == "RK4 weights k_j",
-         step == 1) %>%
-  mutate(source = "Substep Y(t) ests")
+plot_data <- tibble(
+  y_hat = c(y_est$y_hat[c(1,9,17,25,33)], y_true[1:5]),
+  time = c(y_est$time[c(1,9,17,25,33)], 0:4),
+  source = c(y_est$source[c(1,9,17,25,33)], rep("Analytic Y(t) \n beta_0 = 10 \n beta_1 = 1", times = 5))
+)
 
-plot_data_other_steps <- y_est %>%
-  filter(source == "RK4 weights k_j",
-         step > 1) %>%
-  mutate(source = "Substep Y(t) ests")
-
-plot_data_y_hat <- y_est %>%
-  filter(source == "Est. Y(t_j)") %>%
-  mutate(source = "Numerical Est.")
-
-plot_data_Y_t <- plot_data_y_hat[seq(from = 1, to = 20, by = 2),] %>%
-  mutate(source = "True Y(t_j)")
-plot_data_Y_t$y_hat = y_true
-
-plot_data <- rbind(plot_data_first_step, plot_data_Y_t, plot_data_y_hat)
-
-numeric_plot_bad <- ggplot(plot_data, aes(x = index, y=y_hat, group=source)) +
-  geom_line(aes(colour = source, linewidth = source), alpha = 0.8) +
-  geom_point(aes(colour = source, shape =source, size = source), 
-             alpha = 0.8, stroke = 0.8) +
-  scale_colour_manual(values = c("darkred", "black", "#f8766d")) +
-  scale_linewidth_manual(values = c(0.5, 0.5, 0.8)) +
-  scale_size_manual(values = c(2, 3, 3)) +
-  scale_shape_manual(values = c(4, 3, 19)) +
-  geom_line(data = plot_data_other_steps, aes(group = as.factor(step)),
-            colour = "black", linewidth = 0.5, alpha = 0.8) +
-  geom_point(data = plot_data_other_steps,
-             colour = "black", shape = 3, size = 2, 
-             alpha = 0.8, stroke = 0.8) +
-  labs(x = "Step",
-       y = "Estimated Y",
-       title = "Numerical est.: step size 0.5, beta_0 = 49.4, beta_1 = 4.94",
-       colour = "Source",
-       shape = "Source",
-       linewidth = "Source",
-       size = "Source") +
-  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "dashed")+
+obs_plot_bad <- ggplot(plot_data, aes(x = time, y=y_hat, group=source)) + 
+  geom_function(fun=analytic_solution, args=true_args_list,
+                colour="black", linetype = "solid",
+                linewidth=0.8) +
+  geom_point(alpha = 1, stroke = 1.5, size = 3, 
+             aes(colour = source, shape = source)) +
+  geom_point(data = plot_data[1:5,], alpha = 1, stroke = 1.5, size = 3, 
+             colour = "darkred", shape = 4,
+             aes(x = time, y = y_hat)) +
+  scale_alpha_manual(values = c(0,1)) +
+  scale_colour_manual(values = c("grey70", "darkred")) +
+  scale_shape_manual(values = c(19,4)) +
+  labs(x = "Time",
+       y = "Y",
+       title = "beta_0 = 49.3, beta_1 = 4.91") +
   theme_classic() +
   theme(legend.position = "inside",
-        legend.position.inside = c(0.7,0.7))
+        legend.position.inside = c(0.7, 0.3))
+
+numeric_plot_bad <- ggplot(y_est, aes(x = time, y=y_hat, group=as.factor(step))) +
+  geom_function(fun=analytic_solution, args=true_args_list,
+                colour="black", linetype = "solid",
+                linewidth=0.8) +
+  geom_line(alpha = 1, colour = "darkred", linetype = "dashed") +
+  geom_point(alpha = 1, stroke = 1, colour = "darkred", shape = 4) +
+  labs(x = "Time",
+       y = "Estimated Y",
+       title = "beta_0 = 49.3, beta_1 = 4.91") +
+  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "dashed")+
+  theme_classic()
 
 #Plot of within-step k-values
-k_plot_data <- y_est %>% filter(!is.na(k_vals))
-  
-weights_plot_bad <- ggplot(k_plot_data, aes(x = index, y=k_vals, group=as.factor(step))) +
-  geom_line(colour = "black", linewidth = 0.5, alpha = 0.8) +
-  geom_point(colour = "black", shape = 3, size = 2, 
-             alpha = 0.8, stroke = 0.8) +
-  labs(x = "Index",
-       y = "k value",
-       title = "Gradient est.: step size 0.5, beta_0 = 49.4, beta_1 = 4.94") +
-  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "dashed")+
+weights_plot_bad <- ggplot(y_est, aes(x = time, y=k_vals, group=as.factor(step))) +
+  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "solid") +
+  geom_line(alpha = 1, colour = "darkred", linetype = "dashed") +
+  geom_point(alpha = 1, stroke = 1, colour = "darkred", shape = 4) +
+  labs(x = "Time",
+       y = "Gradient",
+       title = "beta_0 = 49.3, beta_1 = 4.91") +
   theme_classic()
 ```
 
@@ -1150,23 +1153,23 @@ For comparison, here's the numerical behaviour at the true parameter combination
 ```{r}
 pars <- c(10, 1)
 step_size <- 0.5
-steps <- 18
+steps <- 9
 y_0 <- 1
+y_start <- y_0
 y_est <- tibble(
-  y_hat = y_0,
-  source = "Est. Y(t_j)",
-  k_vals = NA,
-  step = 0
+  y_hat = c(),
+  source = c(),
+  k_vals = c(),
+  step = c()
 )
 
-y_start <- y_0
 for(i in 1:steps){
   numeric_sol <- rk4_step(y_start, pars,  step_size, example_DE)
   
   y_est_temp <- tibble(
-    y_hat = c(numeric_sol$intermediate_step, numeric_sol$y_hat),
-    source = c(rep("RK4 weights k_j", times = 3), "Est. Y(t_j)"),
-    k_vals = c(numeric_sol$k_vals),
+    y_hat = numeric_sol$intermediate_step,
+    source = "RK4",
+    k_vals = numeric_sol$k_vals,
     step = i
   )
   
@@ -1175,63 +1178,122 @@ for(i in 1:steps){
 }
 
 y_est$index <- 1:nrow(y_est)
+y_est <- y_est %>%
+  mutate(time = (index-1) *(step_size/4))
 
-plot_data_first_step <- y_est %>%
-  filter(source == "RK4 weights k_j",
-         step == 1) %>%
-  mutate(source = "Substep Y(t) ests")
+plot_data <- tibble(
+  y_hat = c(y_est$y_hat[c(1,9,17,25,33)], y_true[1:5]),
+  time = c(y_est$time[c(1,9,17,25,33)], 0:4),
+  source = c(y_est$source[c(1,9,17,25,33)], rep("Analytic Y(t) \n beta_0 = 10 \n beta_1 = 1", times = 5))
+)
 
-plot_data_other_steps <- y_est %>%
-  filter(source == "RK4 weights k_j",
-         step > 1) %>%
-  mutate(source = "Substep Y(t) ests")
-
-plot_data_y_hat <- y_est %>%
-  filter(source == "Est. Y(t_j)") %>%
-  mutate(source = "Numerical Est.")
-
-plot_data_Y_t <- plot_data_y_hat[seq(from = 1, to = 20, by = 2),] %>%
-  mutate(source = "True Y(t_j)")
-plot_data_Y_t$y_hat = y_true
-
-plot_data <- rbind(plot_data_first_step, plot_data_Y_t, plot_data_y_hat)
-
-numeric_plot_good <- ggplot(plot_data, aes(x = index, y=y_hat, group=source)) +
-  geom_line(aes(colour = source, linewidth = source), alpha = 0.8) +
-  geom_point(aes(colour = source, shape =source, size = source), 
-             alpha = 0.8, stroke = 0.8) +
-  scale_colour_manual(values = c("darkred", "black", "#f8766d")) +
-  scale_linewidth_manual(values = c(0.5, 0.5, 0.8)) +
-  scale_size_manual(values = c(2, 3, 3)) +
-  scale_shape_manual(values = c(4, 3, 19)) +
-  geom_line(data = plot_data_other_steps, aes(group = as.factor(step)),
-            colour = "black", linewidth = 0.5, alpha = 0.8) +
-  geom_point(data = plot_data_other_steps,
-             colour = "black", shape = 3, size = 2, 
-             alpha = 0.8, stroke = 0.8) +
-  labs(x = "Step",
-       y = "Estimated Y",
-       title = "Numerical est.: step size 0.5, beta_0 = 10, beta_1 = 1",
-       colour = "Source",
-       shape = "Source",
-       linewidth = "Source",
-       size = "Source") +
-  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "dashed")+
+obs_plot_good <- ggplot(plot_data, aes(x = time, y=y_hat, group=source)) + 
+  geom_function(fun=analytic_solution, args=true_args_list,
+                colour="black", linetype = "solid",
+                linewidth=0.8) +
+  geom_point(alpha = 1, stroke = 1.5, size = 3, 
+             aes(colour = source, shape = source)) +
+  geom_point(data = plot_data[1:5,], alpha = 1, stroke = 1.5, size = 3, 
+             colour = "darkorchid4", shape = 3,
+             aes(x = time, y = y_hat)) +
+  scale_alpha_manual(values = c(0,1)) +
+  scale_colour_manual(values = c("grey70", "darkorchid4")) +
+  scale_shape_manual(values = c(19,3)) +
+  labs(x = "Time",
+       y = "Y",
+       title = "beta_0 = 10, beta_1 = 1") +
   theme_classic() +
   theme(legend.position = "inside",
-        legend.position.inside = c(0.7,0.4))
+        legend.position.inside = c(0.7, 0.3))
 
-#Plot of within-step k-values
-k_plot_data <- y_est %>% filter(!is.na(k_vals))
-weights_plot_good <- ggplot(k_plot_data, aes(x = index, y=k_vals, group=as.factor(step))) +
-  geom_line(colour = "black", linewidth = 0.5, alpha = 0.8) +
-  geom_point(colour = "black", shape = 3, size = 2, 
-             alpha = 0.8, stroke = 0.8) +
-  labs(x = "Index",
-       y = "k value",
-       title = "Gradient est.: step size 0.5, beta_0 = 10, beta_1 = 1") +
+numeric_plot_good <- ggplot(y_est, aes(x = time, y=y_hat, group=as.factor(step))) +
+  geom_function(fun=analytic_solution, args=true_args_list,
+                colour="black", linetype = "solid",
+                linewidth=0.8, alpha = 0.8) +
+  geom_line(alpha = 1, colour = "darkorchid4", linetype = "dashed") +
+  geom_point(alpha = 1, stroke = 1, colour = "darkorchid4", shape = 3) +
+  labs(x = "Time",
+       y = "Estimated Y",
+       title = "beta_0 = 10, beta_1 = 1") +
   geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "dashed")+
   theme_classic()
+
+#Plot of within-step k-values
+weights_plot_good <- ggplot(y_est, aes(x = time, y=k_vals, group=as.factor(step))) +
+  geom_hline(yintercept=0, colour = "black", linewidth = 0.25, linetype = "solid") +
+  geom_line(alpha = 1, colour = "darkorchid4", linetype = "dashed") +
+  geom_point(alpha = 1, stroke = 1, colour = "darkorchid4", shape = 4) +
+  labs(x = "Time",
+       y = "Gradient",
+       title = "beta_0 = 10, beta_1 = 1") +
+  theme_classic()
+```
+
+The following code implements the RK4 numerical step polynomial and plots it for the first 10 steps (time 0 to 5)
+```{r}
+affine_numeric_poly <- function(x = NULL, pars = NULL){ #Pars: h, y_0, y_1
+  y <- pars[[2]] - pars[[3]] + 
+           (10 - pars[[2]])*( pars[[1]]*x - (pars[[1]]^2/2)*x^2 + 
+                               (pars[[1]]^3/6)*x^3 - (pars[[1]]^4/24)*x^4)
+  return(y)
+}
+
+pars_tibble <- tibble(
+  step = 1,
+  h = 0.5,
+  y_0 = 1,
+  y_1 = 4.541224
+)
+
+for(i in 2:5){
+  pars <- list(beta_0 = 10, beta_1 = 1, y_0 = pars_tibble$y_1[i-1])
+  pars_tibble_temp <- tibble(
+    step = i,
+    h = 0.5,
+    y_0 = pars_tibble$y_1[i-1],
+    y_1 = analytic_solution(0.5, pars)
+  )
+  pars_tibble <- rbind(pars_tibble, pars_tibble_temp)
+}
+
+pars_tibble$colour <- rep(c("#070713",
+                        "#191f45",
+                        "#28327c",
+                        "#3c45b7",
+                        "#5757f4"), times = 1)
+
+legend_data <- tibble(
+  x = 100:109,
+  y = 100:109,
+  step = c(1,1,2,2,3,3,4,4,5,5)
+)
+
+affine_poly_plot <- ggplot()+
+  xlim(c(0.5,5.1)) +
+  ylim(c( -1.5,3.1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.5)
+
+for(i in 1:5){
+  args_list = list(pars = as.numeric(pars_tibble[i,2:4]))
+  affine_poly_plot <- affine_poly_plot +
+    geom_function(fun=affine_numeric_poly, args=args_list,
+                colour=pars_tibble$colour[i], linetype = "solid",
+                linewidth=0.8, alpha = 0.8)
+}
+affine_poly_plot <- affine_poly_plot +
+  geom_line(data = legend_data, linewidth=0.8, alpha = 0.8,
+            aes(x = x, y = y, colour = as.factor(step))) +
+  scale_colour_manual(values = c("#070713",
+                        "#191f45",
+                        "#28327c",
+                        "#3c45b7",
+                        "#5757f4")) +
+  labs(x = "beta_1", title = "RK4 polynomial in beta_1, first 5 steps",
+       colour = "Step") +
+  theme_classic() + 
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.1, 0.8))
+  
 ```
 
 ### Step sizes
@@ -2135,12 +2197,14 @@ lab_vec_8 <- c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)", "(h)")
 
 #Numerics plots
 plot_grid(
+  obs_plot_bad,
+  obs_plot_good,
   numeric_plot_bad,
   numeric_plot_good,
   weights_plot_bad,
   weights_plot_good,
-  nrow = 2,
-  labels= lab_vec_4
+  nrow = 3,
+  labels= lab_vec_6
 )
 
 #DE, analytic solutions, all parameters, and sizes over time
