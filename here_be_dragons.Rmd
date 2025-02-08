@@ -193,12 +193,23 @@ while(!(good_est && bad_est)){#Run the model
   }
 }
 
+good_ests <- hmde_extract_estimates(good_fit, obs_data_frame)
+bad_ests <- hmde_extract_estimates(bad_fit, obs_data_frame)
+
 good_plot <- traceplot(good_fit, pars = c("ind_beta_0", "ind_beta_1"), 
                        colour = "green4") +
-  labs(title = "Good estimate traceplots")
+  labs(title = paste0("Good est. traceplots: beta_0 = ", 
+                      signif(good_ests$individual_data$ind_beta_0_mean,
+                             digits = 3), ", beta_1 = ",
+                      signif(good_ests$individual_data$ind_beta_1_mean,
+                             digits = 3)))
 bad_plot <- traceplot(bad_fit, , pars = c("ind_beta_0", "ind_beta_1"),
                       colour = "cornflowerblue") +
-  labs(title = "Bad estimate traceplots")
+  labs(title = paste0("Bad est. traceplots: beta_0 = ", 
+                      signif(bad_ests$individual_data$ind_beta_0_mean,
+                             digits = 3), ", beta_1 = ",
+                      signif(bad_ests$individual_data$ind_beta_1_mean,
+                             digits = 3)))
 
 plot_grid(
   good_plot,
@@ -1231,27 +1242,38 @@ weights_plot_good <- ggplot(y_est, aes(x = time, y=k_vals, group=as.factor(step)
 
 The following code implements the RK4 numerical step polynomial and plots it for the first 10 steps (time 0 to 5)
 ```{r}
-affine_numeric_poly <- function(x = NULL, pars = NULL){ #Pars: h, y_0, y_1
+affine_numeric_poly <- function(x = NULL, pars = NULL){ #Pars: h, y_0, y_1, y_lim
   y <- pars[[2]] - pars[[3]] + 
-           (10 - pars[[2]])*( pars[[1]]*x - (pars[[1]]^2/2)*x^2 + 
+           (pars[[4]] - pars[[2]])*( pars[[1]]*x - (pars[[1]]^2/2)*x^2 + 
                                (pars[[1]]^3/6)*x^3 - (pars[[1]]^4/24)*x^4)
   return(y)
 }
 
+beta_0 <- 10
+beta_1 <- 1
+y_start <- 1
+step_size <- 0.5
+
 pars_tibble <- tibble(
   step = 1,
-  h = 0.5,
-  y_0 = 1,
-  y_1 = 4.541224
+  h = step_size,
+  y_0 = y_start,
+  y_1 = analytic_solution(step_size, pars = list(beta_0 = beta_0, beta_1 = beta_1, 
+               y_0 = y_start,
+               y_lim = beta_0/beta_1)),
+  y_lim = beta_0/beta_1
 )
 
 for(i in 2:5){
-  pars <- list(beta_0 = 10, beta_1 = 1, y_0 = pars_tibble$y_1[i-1])
+  pars <- list(beta_0 = beta_0, beta_1 = beta_1, 
+               y_0 = pars_tibble$y_1[i-1],
+               y_lim = beta_0/beta_1)
   pars_tibble_temp <- tibble(
     step = i,
-    h = 0.5,
+    h = step_size,
     y_0 = pars_tibble$y_1[i-1],
-    y_1 = analytic_solution(0.5, pars)
+    y_1 = analytic_solution(step_size, pars),
+    y_lim = beta_0/beta_1
   )
   pars_tibble <- rbind(pars_tibble, pars_tibble_temp)
 }
@@ -1274,7 +1296,7 @@ affine_poly_plot <- ggplot()+
   geom_hline(yintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.5)
 
 for(i in 1:5){
-  args_list = list(pars = as.numeric(pars_tibble[i,2:4]))
+  args_list = list(pars = as.numeric(pars_tibble[i,2:5]))
   affine_poly_plot <- affine_poly_plot +
     geom_function(fun=affine_numeric_poly, args=args_list,
                 colour=pars_tibble$colour[i], linetype = "solid",
@@ -1295,6 +1317,85 @@ affine_poly_plot <- affine_poly_plot +
         legend.position.inside = c(0.1, 0.8))
   
 ```
+
+This code checks for bimodality with the alternate parameter values $\beta_0 = 8$, $\beta_1 = 1.5$.
+```{r}
+affine_numeric_poly <- function(x = NULL, pars = NULL){ #Pars: h, y_0, y_1, y_lim
+  y <- pars[[2]] - pars[[3]] + 
+           (pars[[4]] - pars[[2]])*( pars[[1]]*x - (pars[[1]]^2/2)*x^2 + 
+                               (pars[[1]]^3/6)*x^3 - (pars[[1]]^4/24)*x^4)
+  return(y)
+}
+
+beta_0 <- 8
+beta_1 <- 1.5
+y_start <- 1
+step_size <- 0.5
+
+pars_tibble <- tibble(
+  step = 1,
+  h = step_size,
+  y_0 = y_start,
+  y_1 = analytic_solution(step_size, pars = list(beta_0 = beta_0, beta_1 = beta_1, 
+               y_0 = y_start,
+               y_lim = beta_0/beta_1)),
+  y_lim = beta_0/beta_1
+)
+
+for(i in 2:5){
+  pars <- list(beta_0 = beta_0, beta_1 = beta_1, 
+               y_0 = pars_tibble$y_1[i-1],
+               y_lim = beta_0/beta_1)
+  pars_tibble_temp <- tibble(
+    step = i,
+    h = step_size,
+    y_0 = pars_tibble$y_1[i-1],
+    y_1 = analytic_solution(step_size, pars),
+    y_lim = beta_0/beta_1
+  )
+  pars_tibble <- rbind(pars_tibble, pars_tibble_temp)
+}
+
+pars_tibble$colour <- rep(c("#0d0713",
+                        "#281b39",
+                        "#432b64",
+                        "#633b90",
+                        "#854abf"), times = 1)
+
+legend_data <- tibble(
+  x = 100:109,
+  y = 100:109,
+  step = c(1,1,2,2,3,3,4,4,5,5)
+)
+
+affine_poly_plot <- ggplot()+
+  xlim(c(1,5.1)) +
+  ylim(c( -1,1)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.5)
+
+for(i in 1:5){
+  args_list = list(pars = as.numeric(pars_tibble[i,2:5]))
+  affine_poly_plot <- affine_poly_plot +
+    geom_function(fun=affine_numeric_poly, args=args_list,
+                colour=pars_tibble$colour[i], linetype = "solid",
+                linewidth=0.8, alpha = 0.8)
+}
+affine_poly_plot <- affine_poly_plot +
+  geom_line(data = legend_data, linewidth=0.8, alpha = 0.8,
+            aes(x = x, y = y, colour = as.factor(step))) +
+  scale_colour_manual(values = c("#0d0713",
+                        "#281b39",
+                        "#432b64",
+                        "#633b90",
+                        "#854abf")) +
+  labs(x = "beta_1", title = "Alt. par.RK4 polynomial in beta_1, first 5 steps",
+       colour = "Step") +
+  theme_classic() + 
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.1, 0.8))
+  
+```
+
 
 ### Step sizes
 Back to analysis of the individual step sizes. This time we will look at the numerical method stability and error directly for the erroneous parameter values.
@@ -1549,7 +1650,7 @@ rk45_hist_0 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_0)) +
   geom_histogram(fill = "lightblue",
                  colour = "black") +
   labs(x = "beta_0 estimates",
-       title = "Parameter histograms from RK45") +
+       title = "Parameter histograms from RK45 with normal beta_c") +
   theme_classic()
 rk45_hist_1 <- ggplot(data = rk45_par_est_tibble, aes(x=beta_1)) +
   geom_histogram(fill = "lightgreen",
@@ -2242,48 +2343,49 @@ plot_grid(
 )
 
 
-#RK45 and analytic solution
+#RK45
 beta_0_lims <- c(min(c(
       rk45_par_est_tibble$beta_0,
-       analytic_par_est_tibble$beta_0
+       rk45_par_est_tibble_old$beta_0
      )), max(c(
        rk45_par_est_tibble$beta_0,
-       analytic_par_est_tibble$beta_0
+       rk45_par_est_tibble_old$beta_0
 )))
 beta_1_lims <- c(min(c(
       rk45_par_est_tibble$beta_1,
-       analytic_par_est_tibble$beta_1
+       rk45_par_est_tibble_old$beta_1
      )), max(c(
        rk45_par_est_tibble$beta_1,
-       analytic_par_est_tibble$beta_1
+       rk45_par_est_tibble_old$beta_1
 )))
 
 rk45_hist_0_xlim <- rk45_hist_0 +
   xlim(beta_0_lims)
 rk45_hist_1_xlim <- rk45_hist_1 + 
   xlim(beta_1_lims)
-analytic_hist_0_xlim <- analytic_hist_0 +
+rk45_hist_old_0_xlim <- rk45_hist_old_0 +
   xlim(beta_0_lims)
-analytic_hist_1_xlim <- analytic_hist_1 + 
+rk45_hist_old_1_xlim <- rk45_hist_old_1 + 
   xlim(beta_1_lims)
 
 plot_grid(
-  rk45_hist_0_xlim,
-  rk45_hist_1_xlim,
-  analytic_hist_0_xlim,
-  analytic_hist_1_xlim,
+  rk45_hist_0,
+  rk45_hist_1,
+  rk45_hist_old_0,
+  rk45_hist_old_1,
   align = "vh",
   ncol = 2,
   labels = lab_vec_4
 )
 
-#Old data with log-normal prior
 plot_grid(
-  rk45_hist_old_0,
-  rk45_hist_old_1,
-  nrow = 1,
+  rk45_hist_0_xlim,
+  rk45_hist_1_xlim,
+  rk45_hist_old_0_xlim,
+  rk45_hist_old_1_xlim,
   align = "vh",
-  labels = lab_vec_4[1:2]
+  ncol = 2,
+  labels = lab_vec_4
 )
 
 #Optimizing tests
