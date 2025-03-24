@@ -788,7 +788,11 @@ step_size_mix_models_par_ests <- tibble(
   m_dist_c1 = c(),
   m_dist_c2 = c(),
   dist = c(),
-  error_fraction = c()
+  error_fraction = c(),
+  good_beta_0_sd = c(),
+  good_beta_1_sd = c(),
+  bad_beta_0_sd = c(),
+  bad_beta_1_sd = c()
 )
 
 m_dist_centre <- c(9.948498, 0.9909082)
@@ -808,6 +812,13 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
   dist_vec <- calculate_cluster_distances(step_size_mix_models[[i]],
                                           m_dist_centre)
   
+  #Get cluster subsets
+  analysis_data <- cbind(analysis_data, step_size_mix_models[[i]]$posterior)
+  cluster_1 <- analysis_data %>%
+    filter(comp.1 == 1)
+  cluster_2 <- analysis_data %>%
+    filter(comp.2 == 1)
+  
   #Extract values
   step_size_mix_models_par_ests_temp <- tibble(
     step_size = step_size_selected,
@@ -818,7 +829,11 @@ for(i in 1:length(unique(par_est_tibble$step_size))){
     m_dist_c1 = dist_vec[["m_dist_c1"]],
     m_dist_c2 = dist_vec[["m_dist_c2"]],
     euclid_dist = dist_vec[["cluster_euclid_dist"]],
-    error_prob = step_size_mix_models[[i]]$lambda[2]
+    error_prob = step_size_mix_models[[i]]$lambda[2],
+    good_beta_0_sd = sd(cluster_1$beta_0),
+    good_beta_1_sd = sd(cluster_1$beta_1),
+    bad_beta_0_sd = sd(cluster_2$beta_0),
+    bad_beta_1_sd = sd(cluster_2$beta_1)
   )
   
   step_size_mix_models_par_ests <- rbind(step_size_mix_models_par_ests, 
